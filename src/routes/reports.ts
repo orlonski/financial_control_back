@@ -327,7 +327,8 @@ router.get('/cashflow', authenticateToken, async (req: any, res) => {
         period,
         income: data.income,
         expense: data.expense,
-        balance: data.income - data.expense
+        balance: data.income - data.expense,
+        cumulativeBalance: 0
       }))
       .sort((a, b) => a.period.localeCompare(b.period));
 

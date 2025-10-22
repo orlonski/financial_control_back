@@ -113,7 +113,7 @@ router.post('/', authenticateToken, async (req: any, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: error.errors[0].message });
     }
-    res.status(500).json({ error: error.message || 'Internal server error' });
+    res.status(500).json({ error: (error as Error).message || 'Internal server error' });
   }
 });
 
@@ -132,7 +132,7 @@ router.post('/installments', authenticateToken, async (req: any, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: error.errors[0].message });
     }
-    res.status(500).json({ error: error.message || 'Internal server error' });
+    res.status(500).json({ error: (error as Error).message || 'Internal server error' });
   }
 });
 
@@ -151,7 +151,7 @@ router.post('/recurring', authenticateToken, async (req: any, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: error.errors[0].message });
     }
-    res.status(500).json({ error: error.message || 'Internal server error' });
+    res.status(500).json({ error: (error as Error).message || 'Internal server error' });
   }
 });
 
@@ -171,7 +171,7 @@ router.put('/:id', authenticateToken, async (req: any, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: error.errors[0].message });
     }
-    res.status(500).json({ error: error.message || 'Internal server error' });
+    res.status(500).json({ error: (error as Error).message || 'Internal server error' });
   }
 });
 
@@ -182,7 +182,7 @@ router.delete('/:id', authenticateToken, async (req: any, res) => {
 
     res.status(204).send();
   } catch (error) {
-    res.status(500).json({ error: error.message || 'Internal server error' });
+    res.status(500).json({ error: (error as Error).message || 'Internal server error' });
   }
 });
 

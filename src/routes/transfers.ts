@@ -153,7 +153,7 @@ router.put('/:id', authenticateToken, async (req: any, res) => {
       const accountIds = [
         data.fromAccountId,
         data.toAccountId
-      ].filter(Boolean);
+      ].filter((id): id is string => Boolean(id));
 
       const accounts = await prisma.account.findMany({
         where: {

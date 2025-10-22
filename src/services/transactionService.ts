@@ -14,6 +14,7 @@ export interface CreateTransactionData {
   creditCardId?: string;
   installmentNumber?: number;
   totalInstallments?: number;
+  recurrenceId?: string;
   userId: string;
 }
 
@@ -91,6 +92,7 @@ export class TransactionService {
         creditCardId: data.creditCardId || undefined,
         installmentNumber: data.installmentNumber,
         totalInstallments: data.totalInstallments,
+        recurrenceId: data.recurrenceId,
         userId: data.userId
       }
     });
@@ -288,7 +290,7 @@ export class TransactionService {
         }
         return acc;
       },
-      { totalIncome: 0, totalExpense: 0 }
+      { totalIncome: 0, totalExpense: 0, balance: 0 }
     );
 
     summary.balance = summary.totalIncome - summary.totalExpense;
