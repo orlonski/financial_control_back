@@ -139,19 +139,32 @@ router.get('/:id/balance', authenticateToken, async (req: any, res) => {
       return res.status(404).json({ error: 'Account not found' });
     }
 
-    // Calculate current balance
+    // Get current date (end of today)
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+
+    // Calculate current balance (only transactions/transfers up to today)
     const transactions = await prisma.transaction.findMany({
-      where: { accountId: req.params.id },
+      where: {
+        accountId: req.params.id,
+        date: { lte: today }
+      },
       select: { type: true, amount: true }
     });
 
     const transfersFrom = await prisma.transfer.findMany({
-      where: { fromAccountId: req.params.id },
+      where: {
+        fromAccountId: req.params.id,
+        date: { lte: today }
+      },
       select: { amount: true }
     });
 
     const transfersTo = await prisma.transfer.findMany({
-      where: { toAccountId: req.params.id },
+      where: {
+        toAccountId: req.params.id,
+        date: { lte: today }
+      },
       select: { amount: true }
     });
 
@@ -190,20 +203,33 @@ router.get('/balances/all', authenticateToken, async (req: any, res) => {
       orderBy: { createdAt: 'desc' }
     });
 
+    // Get current date (start of today)
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+
     const accountsWithBalances = await Promise.all(
       accounts.map(async (account) => {
         const transactions = await prisma.transaction.findMany({
-          where: { accountId: account.id },
+          where: {
+            accountId: account.id,
+            date: { lte: today }
+          },
           select: { type: true, amount: true }
         });
 
         const transfersFrom = await prisma.transfer.findMany({
-          where: { fromAccountId: account.id },
+          where: {
+            fromAccountId: account.id,
+            date: { lte: today }
+          },
           select: { amount: true }
         });
 
         const transfersTo = await prisma.transfer.findMany({
-          where: { toAccountId: account.id },
+          where: {
+            toAccountId: account.id,
+            date: { lte: today }
+          },
           select: { amount: true }
         });
 

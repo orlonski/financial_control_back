@@ -134,9 +134,20 @@ export class TransactionService {
 
     // Create each installment
     for (let i = 1; i <= totalInstallments; i++) {
+      // Calculate installment date by adding months properly
+      const monthsToAdd = i - 1;
+      const originalMonth = purchaseDate.getMonth();
+      const originalYear = purchaseDate.getFullYear();
+
+      // Calculate new month and year
+      const totalMonths = originalMonth + monthsToAdd;
+      const newYear = originalYear + Math.floor(totalMonths / 12);
+      const newMonth = totalMonths % 12;
+
       const installmentDate = new Date(purchaseDate);
-      installmentDate.setMonth(installmentDate.getMonth() + (i - 1));
-      
+      installmentDate.setFullYear(newYear);
+      installmentDate.setMonth(newMonth);
+
       const invoiceDueDate = this.calculateInvoiceDueDate(
         installmentDate,
         creditCard.closingDay,
