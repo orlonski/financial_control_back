@@ -8,7 +8,7 @@ const router = Router();
 // Get monthly statement (day by day with accumulated balance)
 router.get('/monthly-statement', authenticateToken, async (req: any, res) => {
   try {
-    const { year, month } = req.query;
+    const { year, month, accountId } = req.query;
 
     if (!year || !month) {
       return res.status(400).json({ error: 'Year and month are required' });
@@ -18,14 +18,21 @@ router.get('/monthly-statement', authenticateToken, async (req: any, res) => {
     const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59);
 
     // Get all transactions for the month
+    const transactionWhere: any = {
+      userId: req.userId,
+      date: {
+        gte: startDate,
+        lte: endDate
+      }
+    };
+
+    // Add account filter if provided
+    if (accountId) {
+      transactionWhere.accountId = accountId;
+    }
+
     const transactions = await prisma.transaction.findMany({
-      where: {
-        userId: req.userId,
-        date: {
-          gte: startDate,
-          lte: endDate
-        }
-      },
+      where: transactionWhere,
       include: {
         account: {
           select: {
@@ -53,14 +60,24 @@ router.get('/monthly-statement', authenticateToken, async (req: any, res) => {
     });
 
     // Get all transfers for the month
+    const transferWhere: any = {
+      userId: req.userId,
+      date: {
+        gte: startDate,
+        lte: endDate
+      }
+    };
+
+    // Add account filter if provided (transfers from OR to the account)
+    if (accountId) {
+      transferWhere.OR = [
+        { fromAccountId: accountId },
+        { toAccountId: accountId }
+      ];
+    }
+
     const transfers = await prisma.transfer.findMany({
-      where: {
-        userId: req.userId,
-        date: {
-          gte: startDate,
-          lte: endDate
-        }
-      },
+      where: transferWhere,
       include: {
         fromAccount: {
           select: {
@@ -80,9 +97,14 @@ router.get('/monthly-statement', authenticateToken, async (req: any, res) => {
       orderBy: { date: 'asc' }
     });
 
-    // Get initial balances for all accounts
+    // Get initial balances for all accounts (or just the filtered one)
+    const accountWhere: any = { userId: req.userId };
+    if (accountId) {
+      accountWhere.id = accountId;
+    }
+
     const accounts = await prisma.account.findMany({
-      where: { userId: req.userId }
+      where: accountWhere
     });
 
     const initialBalances: { [key: string]: number } = {};
