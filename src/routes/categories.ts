@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../server';
 import { authenticateToken } from '../middleware/auth';
+import { convertDecimalToNumber } from '../utils/decimal';
 
 const router = Router();
 

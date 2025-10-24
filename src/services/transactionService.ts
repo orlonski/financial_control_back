@@ -20,6 +20,20 @@ export interface CreateTransactionData {
 
 export class TransactionService {
   /**
+   * Normalize date to ensure it has consistent time (03:00:00 UTC)
+   * This avoids timezone issues when working with dates
+   */
+  static normalizeDate(date: Date): Date {
+    const normalized = new Date(Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate(),
+      3, 0, 0, 0
+    ));
+    return normalized;
+  }
+
+  /**
    * Calculate the invoice due date for a credit card transaction
    * @param purchaseDate - Date when the purchase was made
    * @param closingDay - Day when the invoice closes (1-31)
@@ -53,8 +67,9 @@ export class TransactionService {
    * Create a single transaction
    */
   static async createTransaction(data: CreateTransactionData) {
-    let transactionDate = data.date;
-    let purchaseDate = data.purchaseDate;
+    // Normalize dates to avoid timezone issues
+    let transactionDate = this.normalizeDate(data.date);
+    let purchaseDate = data.purchaseDate ? this.normalizeDate(data.purchaseDate) : undefined;
 
     // If it's a credit card transaction, calculate the invoice due date
     if (data.creditCardId) {
@@ -67,14 +82,17 @@ export class TransactionService {
       }
 
       // Use purchase date or transaction date as purchase date
-      const actualPurchaseDate = purchaseDate || data.date;
-      
+      const actualPurchaseDate = purchaseDate || transactionDate;
+
       // Calculate when this transaction should appear (invoice due date)
       transactionDate = this.calculateInvoiceDueDate(
         actualPurchaseDate,
         creditCard.closingDay,
         creditCard.dueDay
       );
+
+      // Normalize the calculated invoice due date
+      transactionDate = this.normalizeDate(transactionDate);
 
       purchaseDate = actualPurchaseDate;
     }
@@ -99,27 +117,29 @@ export class TransactionService {
   }
 
   /**
-   * Create installment transactions for credit card purchases
+   * Create installment transactions for credit card purchases or recurring transactions
    */
   static async createInstallmentTransactions(
     data: Omit<CreateTransactionData, 'installmentNumber' | 'totalInstallments'>,
     totalInstallments: number
   ) {
-    if (!data.creditCardId) {
-      throw new Error('Credit card ID is required for installments');
-    }
-
-    const creditCard = await prisma.creditCard.findUnique({
-      where: { id: data.creditCardId }
-    });
-
-    if (!creditCard) {
-      throw new Error('Credit card not found');
-    }
-
-    const purchaseDate = data.purchaseDate || data.date;
-    const installmentAmount = data.amount / totalInstallments;
+    // Normalize the purchase date to avoid timezone issues
+    const purchaseDate = this.normalizeDate(data.purchaseDate || data.date);
+    // Keep the amount as is (don't divide) - user enters the amount per installment
+    const installmentAmount = data.amount;
     const transactions = [];
+
+    // Get credit card if provided
+    let creditCard = null;
+    if (data.creditCardId) {
+      creditCard = await prisma.creditCard.findUnique({
+        where: { id: data.creditCardId }
+      });
+
+      if (!creditCard) {
+        throw new Error('Credit card not found');
+      }
+    }
 
     // Create recurrence record
     const recurrence = await prisma.recurrence.create({
@@ -136,35 +156,53 @@ export class TransactionService {
     for (let i = 1; i <= totalInstallments; i++) {
       // Calculate installment date by adding months properly
       const monthsToAdd = i - 1;
-      const originalMonth = purchaseDate.getMonth();
-      const originalYear = purchaseDate.getFullYear();
+
+      // Extract date components in UTC to avoid timezone issues
+      const originalDay = purchaseDate.getUTCDate();
+      const originalMonth = purchaseDate.getUTCMonth();
+      const originalYear = purchaseDate.getUTCFullYear();
 
       // Calculate new month and year
       const totalMonths = originalMonth + monthsToAdd;
       const newYear = originalYear + Math.floor(totalMonths / 12);
       const newMonth = totalMonths % 12;
 
-      const installmentDate = new Date(purchaseDate);
-      installmentDate.setFullYear(newYear);
-      installmentDate.setMonth(newMonth);
+      // Create date properly: Year, Month (0-based), Day
+      // This way we preserve the original day (01, 15, 31, etc)
+      const installmentDate = new Date(Date.UTC(newYear, newMonth, originalDay, 3, 0, 0, 0));
 
-      const invoiceDueDate = this.calculateInvoiceDueDate(
-        installmentDate,
-        creditCard.closingDay,
-        creditCard.dueDay
-      );
+      // Calculate transaction date based on whether it's a credit card or not
+      let transactionDate = installmentDate;
+      let transactionPurchaseDate = installmentDate;
+
+      if (creditCard) {
+        // For credit card: calculate invoice due date
+        transactionDate = this.calculateInvoiceDueDate(
+          installmentDate,
+          creditCard.closingDay,
+          creditCard.dueDay
+        );
+        // Normalize the calculated invoice due date
+        transactionDate = this.normalizeDate(transactionDate);
+        transactionPurchaseDate = installmentDate;
+      }
+
+      // Build description: add "Parcela X/Y" only if credit card is present
+      const description = creditCard
+        ? `${data.description} ${i}/${totalInstallments}`
+        : data.description;
 
       const transaction = await prisma.transaction.create({
         data: {
           type: data.type,
           amount: installmentAmount,
-          date: invoiceDueDate,
-          purchaseDate: installmentDate,
-          description: `${data.description} - Parcela ${i}/${totalInstallments}`,
+          date: transactionDate,
+          purchaseDate: creditCard ? transactionPurchaseDate : null,
+          description: description,
           notes: data.notes,
           accountId: data.accountId,
           categoryId: data.categoryId,
-          creditCardId: data.creditCardId,
+          creditCardId: data.creditCardId || null,
           installmentNumber: i,
           totalInstallments: totalInstallments,
           recurrenceId: recurrence.id,

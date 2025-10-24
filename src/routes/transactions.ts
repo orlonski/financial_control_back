@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { TransactionService } from '../services/transactionService';
 import { authenticateToken } from '../middleware/auth';
+import { convertDecimalToNumber } from '../utils/decimal';
 
 const router = Router();
 
@@ -29,7 +30,7 @@ const createInstallmentSchema = z.object({
   notes: z.string().optional(),
   accountId: z.string().min(1, 'Account ID is required'),
   categoryId: z.string().min(1, 'Category ID is required'),
-  creditCardId: z.string().min(1, 'Credit card ID is required for installments'),
+  creditCardId: z.string().optional(),
   totalInstallments: z.number().min(2).max(60, 'Installments must be between 2 and 60')
 });
 
@@ -76,7 +77,7 @@ router.get('/', authenticateToken, async (req: any, res) => {
 
     const transactions = await TransactionService.getTransactions(req.userId, filters);
 
-    res.json(transactions);
+    res.json(convertDecimalToNumber(transactions));
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -92,7 +93,7 @@ router.get('/:id', authenticateToken, async (req: any, res) => {
       return res.status(404).json({ error: 'Transaction not found' });
     }
 
-    res.json(transaction);
+    res.json(convertDecimalToNumber(transaction));
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -166,7 +167,7 @@ router.put('/:id', authenticateToken, async (req: any, res) => {
       data
     );
 
-    res.json(transaction);
+    res.json(convertDecimalToNumber(transaction));
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: error.errors[0].message });
@@ -202,7 +203,7 @@ router.get('/summary/period', authenticateToken, async (req: any, res) => {
       accountId
     );
 
-    res.json(summary);
+    res.json(convertDecimalToNumber(summary));
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }

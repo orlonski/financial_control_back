@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../server';
 import { authenticateToken } from '../middleware/auth';
+import { convertDecimalToNumber } from '../utils/decimal';
 
 const router = Router();
 
@@ -28,7 +29,7 @@ router.get('/', authenticateToken, async (req: any, res) => {
       orderBy: { createdAt: 'desc' }
     });
 
-    res.json(accounts);
+    res.json(convertDecimalToNumber(accounts));
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -48,7 +49,7 @@ router.get('/:id', authenticateToken, async (req: any, res) => {
       return res.status(404).json({ error: 'Account not found' });
     }
 
-    res.json(account);
+    res.json(convertDecimalToNumber(account));
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -96,7 +97,7 @@ router.put('/:id', authenticateToken, async (req: any, res) => {
       where: { id: req.params.id }
     });
 
-    res.json(updatedAccount);
+    res.json(convertDecimalToNumber(updatedAccount));
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: error.errors[0].message });
@@ -189,7 +190,7 @@ router.get('/:id/balance', authenticateToken, async (req: any, res) => {
       balance += Number(transfer.amount);
     });
 
-    res.json({ balance });
+    res.json(convertDecimalToNumber({ balance }));
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -265,7 +266,7 @@ router.get('/balances/all', authenticateToken, async (req: any, res) => {
       })
     );
 
-    res.json(accountsWithBalances);
+    res.json(convertDecimalToNumber(accountsWithBalances));
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }

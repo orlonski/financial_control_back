@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../server';
 import { authenticateToken } from '../middleware/auth';
+import { convertDecimalToNumber } from '../utils/decimal';
 
 const router = Router();
 
@@ -283,7 +284,7 @@ router.get('/by-category', authenticateToken, async (req: any, res) => {
 
     const result = Object.values(categoryTotals).sort((a: any, b: any) => b.total - a.total);
 
-    res.json(result);
+    res.json(convertDecimalToNumber(result));
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -361,7 +362,7 @@ router.get('/cashflow', authenticateToken, async (req: any, res) => {
       item.cumulativeBalance = cumulativeBalance;
     });
 
-    res.json(result);
+    res.json(convertDecimalToNumber(result));
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }

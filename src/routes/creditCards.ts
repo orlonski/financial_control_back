@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../server';
 import { authenticateToken } from '../middleware/auth';
+import { convertDecimalToNumber } from '../utils/decimal';
 
 const router = Router();
 
@@ -39,7 +40,7 @@ router.get('/', authenticateToken, async (req: any, res) => {
       orderBy: { createdAt: 'desc' }
     });
 
-    res.json(creditCards);
+    res.json(convertDecimalToNumber(creditCards));
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -68,7 +69,7 @@ router.get('/:id', authenticateToken, async (req: any, res) => {
       return res.status(404).json({ error: 'Credit card not found' });
     }
 
-    res.json(creditCard);
+    res.json(convertDecimalToNumber(creditCard));
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -160,7 +161,7 @@ router.put('/:id', authenticateToken, async (req: any, res) => {
       }
     });
 
-    res.json(updatedCreditCard);
+    res.json(convertDecimalToNumber(updatedCreditCard));
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: error.errors[0].message });

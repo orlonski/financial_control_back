@@ -2,6 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
+import { convertDecimalToNumber } from '../utils/decimal';
 import { prisma } from '../server';
 import { authenticateToken } from '../middleware/auth';
 
