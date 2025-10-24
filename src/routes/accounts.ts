@@ -195,24 +195,31 @@ router.get('/:id/balance', authenticateToken, async (req: any, res) => {
   }
 });
 
-// Get all accounts with balances
+// Get all accounts with balances (optionally at a specific date)
 router.get('/balances/all', authenticateToken, async (req: any, res) => {
   try {
+    const { endDate, accountId } = req.query;
+
+    const accountWhere: any = { userId: req.userId };
+    if (accountId) {
+      accountWhere.id = accountId;
+    }
+
     const accounts = await prisma.account.findMany({
-      where: { userId: req.userId },
+      where: accountWhere,
       orderBy: { createdAt: 'desc' }
     });
 
-    // Get current date (start of today)
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
+    // Use provided end date or current date
+    const targetDate = endDate ? new Date(endDate) : new Date();
+    targetDate.setHours(23, 59, 59, 999);
 
     const accountsWithBalances = await Promise.all(
       accounts.map(async (account) => {
         const transactions = await prisma.transaction.findMany({
           where: {
             accountId: account.id,
-            date: { lte: today }
+            date: { lte: targetDate }
           },
           select: { type: true, amount: true }
         });
@@ -220,7 +227,7 @@ router.get('/balances/all', authenticateToken, async (req: any, res) => {
         const transfersFrom = await prisma.transfer.findMany({
           where: {
             fromAccountId: account.id,
-            date: { lte: today }
+            date: { lte: targetDate }
           },
           select: { amount: true }
         });
@@ -228,7 +235,7 @@ router.get('/balances/all', authenticateToken, async (req: any, res) => {
         const transfersTo = await prisma.transfer.findMany({
           where: {
             toAccountId: account.id,
-            date: { lte: today }
+            date: { lte: targetDate }
           },
           select: { amount: true }
         });

@@ -189,7 +189,7 @@ router.delete('/:id', authenticateToken, async (req: any, res) => {
 // Get transaction summary
 router.get('/summary/period', authenticateToken, async (req: any, res) => {
   try {
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, accountId } = req.query;
 
     if (!startDate || !endDate) {
       return res.status(400).json({ error: 'Start date and end date are required' });
@@ -198,7 +198,8 @@ router.get('/summary/period', authenticateToken, async (req: any, res) => {
     const summary = await TransactionService.getTransactionSummary(
       req.userId,
       new Date(startDate),
-      new Date(endDate)
+      new Date(endDate),
+      accountId
     );
 
     res.json(summary);

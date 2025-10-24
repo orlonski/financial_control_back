@@ -276,16 +276,23 @@ export class TransactionService {
   static async getTransactionSummary(
     userId: string,
     startDate: Date,
-    endDate: Date
+    endDate: Date,
+    accountId?: string
   ) {
+    const where: any = {
+      userId,
+      date: {
+        gte: startDate,
+        lte: endDate
+      }
+    };
+
+    if (accountId) {
+      where.accountId = accountId;
+    }
+
     const transactions = await prisma.transaction.findMany({
-      where: {
-        userId,
-        date: {
-          gte: startDate,
-          lte: endDate
-        }
-      },
+      where,
       select: {
         type: true,
         amount: true
