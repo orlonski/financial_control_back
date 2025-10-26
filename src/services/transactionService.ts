@@ -46,20 +46,19 @@ export class TransactionService {
     dueDay: number
   ): Date {
     const purchaseDay = purchaseDate.getDate();
-    
+
     // If purchase day <= closing day, it goes to current month's invoice
     // If purchase day > closing day, it goes to next month's invoice
-    const invoiceMonth = purchaseDay <= closingDay 
-      ? purchaseDate.getMonth() 
+    const invoiceMonth = purchaseDay <= closingDay
+      ? purchaseDate.getMonth()
       : purchaseDate.getMonth() + 1;
-    
-    const invoiceYear = purchaseDay <= closingDay 
-      ? purchaseDate.getFullYear() 
-      : purchaseDate.getFullYear() + (invoiceMonth > 11 ? 1 : 0);
-    
+
+    const invoiceYear = purchaseDate.getFullYear();
+
+    // Handle month overflow (12 -> 0, year++)
     const finalMonth = invoiceMonth > 11 ? 0 : invoiceMonth;
     const finalYear = invoiceMonth > 11 ? invoiceYear + 1 : invoiceYear;
-    
+
     return new Date(finalYear, finalMonth, dueDay);
   }
 
