@@ -40,7 +40,28 @@ router.get('/', authenticateToken, async (req: any, res) => {
       orderBy: { createdAt: 'desc' }
     });
 
-    res.json(convertDecimalToNumber(creditCards));
+    // Calculate used amount for each card (sum of unpaid transactions)
+    const cardsWithUsage = await Promise.all(
+      creditCards.map(async (card) => {
+        const unpaidTransactions = await prisma.transaction.aggregate({
+          where: {
+            creditCardId: card.id,
+            paid: false,
+            type: 'EXPENSE'
+          },
+          _sum: {
+            amount: true
+          }
+        });
+
+        return {
+          ...card,
+          usedAmount: unpaidTransactions._sum.amount || 0
+        };
+      })
+    );
+
+    res.json(convertDecimalToNumber(cardsWithUsage));
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }

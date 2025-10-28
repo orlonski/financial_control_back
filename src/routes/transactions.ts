@@ -187,6 +187,27 @@ router.delete('/:id', authenticateToken, async (req: any, res) => {
   }
 });
 
+// Toggle transaction paid status
+router.patch('/:id/paid', authenticateToken, async (req: any, res) => {
+  try {
+    const { paid } = req.body;
+
+    if (typeof paid !== 'boolean') {
+      return res.status(400).json({ error: 'Paid field must be a boolean' });
+    }
+
+    const transaction = await TransactionService.updateTransactionPaidStatus(
+      req.params.id,
+      req.userId,
+      paid
+    );
+
+    res.json(convertDecimalToNumber(transaction));
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message || 'Internal server error' });
+  }
+});
+
 // Get transaction summary
 router.get('/summary/period', authenticateToken, async (req: any, res) => {
   try {

@@ -88,6 +88,7 @@ model Transaction {
   purchaseDate       DateTime? // Data real da compra (usado para cartão)
   description        String
   notes              String?
+  paid               Boolean   @default(false) // Se a transação foi paga
   accountId          String
   categoryId         String
   creditCardId       String?

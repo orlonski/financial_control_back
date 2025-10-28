@@ -415,4 +415,56 @@ export class TransactionService {
 
     return true;
   }
+
+  /**
+   * Update transaction paid status
+   */
+  static async updateTransactionPaidStatus(
+    transactionId: string,
+    userId: string,
+    paid: boolean
+  ) {
+    // Verify transaction belongs to user
+    const existingTransaction = await prisma.transaction.findFirst({
+      where: {
+        id: transactionId,
+        userId
+      }
+    });
+
+    if (!existingTransaction) {
+      throw new Error('Transaction not found');
+    }
+
+    const transaction = await prisma.transaction.update({
+      where: { id: transactionId },
+      data: { paid },
+      include: {
+        account: {
+          select: {
+            id: true,
+            name: true,
+            type: true
+          }
+        },
+        category: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            color: true,
+            icon: true
+          }
+        },
+        creditCard: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
+      }
+    });
+
+    return transaction;
+  }
 }
