@@ -149,6 +149,18 @@ router.put('/:id', authenticateToken, async (req: any, res) => {
   try {
     const data = updateTransferSchema.parse(req.body);
 
+    // First check if transfer exists and belongs to user
+    const existingTransfer = await prisma.transfer.findFirst({
+      where: {
+        id: req.params.id,
+        userId: req.userId
+      }
+    });
+
+    if (!existingTransfer) {
+      return res.status(404).json({ error: 'Transfer not found' });
+    }
+
     // If updating accounts, verify they belong to user
     if (data.fromAccountId || data.toAccountId) {
       const accountIds = [
@@ -168,20 +180,10 @@ router.put('/:id', authenticateToken, async (req: any, res) => {
       }
     }
 
-    const transfer = await prisma.transfer.updateMany({
-      where: {
-        id: req.params.id,
-        userId: req.userId
-      },
-      data
-    });
-
-    if (transfer.count === 0) {
-      return res.status(404).json({ error: 'Transfer not found' });
-    }
-
-    const updatedTransfer = await prisma.transfer.findUnique({
+    // Update and return in single query
+    const updatedTransfer = await prisma.transfer.update({
       where: { id: req.params.id },
+      data,
       include: {
         fromAccount: {
           select: {

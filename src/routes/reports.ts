@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { z } from 'zod';
 import { prisma } from '../server';
 import { authenticateToken } from '../middleware/auth';
 import { convertDecimalToNumber } from '../utils/decimal';
@@ -15,8 +14,8 @@ router.get('/monthly-statement', authenticateToken, async (req: any, res) => {
       return res.status(400).json({ error: 'Year and month are required' });
     }
 
-    const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);
-    const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59);
+    const startDate = new Date(parseInt(year as string), parseInt(month as string) - 1, 1);
+    const endDate = new Date(parseInt(year as string), parseInt(month as string), 0, 23, 59, 59);
 
     // Get all transactions for the month
     const transactionWhere: any = {
@@ -108,53 +107,74 @@ router.get('/monthly-statement', authenticateToken, async (req: any, res) => {
       where: accountWhere
     });
 
+    if (accounts.length === 0) {
+      return res.json({
+        month: parseInt(month as string),
+        year: parseInt(year as string),
+        dailyBalances: [],
+        accounts: []
+      });
+    }
+
+    const accountIds = accounts.map(a => a.id);
+
+    // Batch query: Get income before the month grouped by account
+    const incomeBeforeByAccount = await prisma.transaction.groupBy({
+      by: ['accountId'],
+      where: {
+        accountId: { in: accountIds },
+        date: { lt: startDate },
+        type: 'INCOME'
+      },
+      _sum: { amount: true }
+    });
+
+    // Batch query: Get expenses before the month grouped by account
+    const expenseBeforeByAccount = await prisma.transaction.groupBy({
+      by: ['accountId'],
+      where: {
+        accountId: { in: accountIds },
+        date: { lt: startDate },
+        type: 'EXPENSE'
+      },
+      _sum: { amount: true }
+    });
+
+    // Batch query: Get outgoing transfers before the month grouped by account
+    const transfersFromBeforeByAccount = await prisma.transfer.groupBy({
+      by: ['fromAccountId'],
+      where: {
+        fromAccountId: { in: accountIds },
+        date: { lt: startDate }
+      },
+      _sum: { amount: true }
+    });
+
+    // Batch query: Get incoming transfers before the month grouped by account
+    const transfersToBeforeByAccount = await prisma.transfer.groupBy({
+      by: ['toAccountId'],
+      where: {
+        toAccountId: { in: accountIds },
+        date: { lt: startDate }
+      },
+      _sum: { amount: true }
+    });
+
+    // Create maps for quick lookup
+    const incomeBeforeMap = new Map(incomeBeforeByAccount.map(i => [i.accountId, Number(i._sum.amount || 0)]));
+    const expenseBeforeMap = new Map(expenseBeforeByAccount.map(e => [e.accountId, Number(e._sum.amount || 0)]));
+    const transfersFromBeforeMap = new Map(transfersFromBeforeByAccount.map(t => [t.fromAccountId, Number(t._sum.amount || 0)]));
+    const transfersToBeforeMap = new Map(transfersToBeforeByAccount.map(t => [t.toAccountId, Number(t._sum.amount || 0)]));
+
+    // Calculate initial balances using maps
     const initialBalances: { [key: string]: number } = {};
-    
     for (const account of accounts) {
-      // Calculate balance before the month
-      const transactionsBefore = await prisma.transaction.findMany({
-        where: {
-          accountId: account.id,
-          date: { lt: startDate }
-        },
-        select: { type: true, amount: true }
-      });
+      const incomeBefore = incomeBeforeMap.get(account.id) || 0;
+      const expenseBefore = expenseBeforeMap.get(account.id) || 0;
+      const transfersFromBefore = transfersFromBeforeMap.get(account.id) || 0;
+      const transfersToBefore = transfersToBeforeMap.get(account.id) || 0;
 
-      const transfersFromBefore = await prisma.transfer.findMany({
-        where: {
-          fromAccountId: account.id,
-          date: { lt: startDate }
-        },
-        select: { amount: true }
-      });
-
-      const transfersToBefore = await prisma.transfer.findMany({
-        where: {
-          toAccountId: account.id,
-          date: { lt: startDate }
-        },
-        select: { amount: true }
-      });
-
-      let balance = Number(account.initialBalance);
-
-      transactionsBefore.forEach(transaction => {
-        if (transaction.type === 'INCOME') {
-          balance += Number(transaction.amount);
-        } else {
-          balance -= Number(transaction.amount);
-        }
-      });
-
-      transfersFromBefore.forEach(transfer => {
-        balance -= Number(transfer.amount);
-      });
-
-      transfersToBefore.forEach(transfer => {
-        balance += Number(transfer.amount);
-      });
-
-      initialBalances[account.id] = balance;
+      initialBalances[account.id] = Number(account.initialBalance) + incomeBefore - expenseBefore - transfersFromBefore + transfersToBefore;
     }
 
     // Group transactions by day
@@ -184,7 +204,7 @@ router.get('/monthly-statement', authenticateToken, async (req: any, res) => {
     // Generate all days in the month
     const daysInMonth = endDate.getDate();
     for (let day = 1; day <= daysInMonth; day++) {
-      const currentDate = new Date(parseInt(year), parseInt(month) - 1, day);
+      const currentDate = new Date(parseInt(year as string), parseInt(month as string) - 1, day);
       const dayString = currentDate.toISOString().split('T')[0];
 
       const dayTransactions = dailyTransactions[dayString] || [];
@@ -219,8 +239,8 @@ router.get('/monthly-statement', authenticateToken, async (req: any, res) => {
     }
 
     res.json({
-      month: parseInt(month),
-      year: parseInt(year),
+      month: parseInt(month as string),
+      year: parseInt(year as string),
       dailyBalances,
       accounts: accounts.map(account => ({
         id: account.id,

@@ -18,7 +18,8 @@ const createTransactionSchema = z.object({
   categoryId: z.string().min(1, 'Category ID is required'),
   creditCardId: z.string().optional(),
   installmentNumber: z.number().optional(),
-  totalInstallments: z.number().optional()
+  totalInstallments: z.number().optional(),
+  isRecurringCharge: z.boolean().optional()
 });
 
 const createInstallmentSchema = z.object({
@@ -31,7 +32,8 @@ const createInstallmentSchema = z.object({
   accountId: z.string().min(1, 'Account ID is required'),
   categoryId: z.string().min(1, 'Category ID is required'),
   creditCardId: z.string().optional(),
-  totalInstallments: z.number().min(2).max(60, 'Installments must be between 2 and 60')
+  totalInstallments: z.number().min(2).max(60, 'Installments must be between 2 and 60'),
+  isRecurringCharge: z.boolean().optional()
 });
 
 const createRecurringSchema = z.object({
@@ -45,7 +47,8 @@ const createRecurringSchema = z.object({
   creditCardId: z.string().optional(),
   interval: z.enum(['DAY', 'WEEK', 'MONTH', 'YEAR']),
   intervalCount: z.number().min(1).max(30, 'Interval count must be between 1 and 30'),
-  endDate: z.string().transform(str => new Date(str)).optional()
+  endDate: z.string().transform(str => new Date(str)).optional(),
+  isRecurringCharge: z.boolean().optional()
 });
 
 const updateTransactionSchema = createTransactionSchema.partial();
@@ -86,8 +89,7 @@ router.get('/', authenticateToken, async (req: any, res) => {
 // Get transaction by ID
 router.get('/:id', authenticateToken, async (req: any, res) => {
   try {
-    const transactions = await TransactionService.getTransactions(req.userId, {});
-    const transaction = transactions.find(t => t.id === req.params.id);
+    const transaction = await TransactionService.getTransactionById(req.params.id, req.userId);
 
     if (!transaction) {
       return res.status(404).json({ error: 'Transaction not found' });

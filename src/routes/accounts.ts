@@ -81,20 +81,22 @@ router.put('/:id', authenticateToken, async (req: any, res) => {
   try {
     const data = updateAccountSchema.parse(req.body);
 
-    const account = await prisma.account.updateMany({
+    // First check if account exists and belongs to user
+    const existingAccount = await prisma.account.findFirst({
       where: {
         id: req.params.id,
         userId: req.userId
-      },
-      data
+      }
     });
 
-    if (account.count === 0) {
+    if (!existingAccount) {
       return res.status(404).json({ error: 'Account not found' });
     }
 
-    const updatedAccount = await prisma.account.findUnique({
-      where: { id: req.params.id }
+    // Update and return in single query
+    const updatedAccount = await prisma.account.update({
+      where: { id: req.params.id },
+      data
     });
 
     res.json(convertDecimalToNumber(updatedAccount));
@@ -211,60 +213,79 @@ router.get('/balances/all', authenticateToken, async (req: any, res) => {
       orderBy: { createdAt: 'desc' }
     });
 
+    if (accounts.length === 0) {
+      return res.json([]);
+    }
+
     // Use provided end date or current date
-    const targetDate = endDate ? new Date(endDate) : new Date();
+    const targetDate = endDate ? new Date(endDate as string) : new Date();
     targetDate.setHours(23, 59, 59, 999);
 
-    const accountsWithBalances = await Promise.all(
-      accounts.map(async (account) => {
-        const transactions = await prisma.transaction.findMany({
-          where: {
-            accountId: account.id,
-            date: { lte: targetDate }
-          },
-          select: { type: true, amount: true }
-        });
+    // Get all account IDs
+    const accountIds = accounts.map(a => a.id);
 
-        const transfersFrom = await prisma.transfer.findMany({
-          where: {
-            fromAccountId: account.id,
-            date: { lte: targetDate }
-          },
-          select: { amount: true }
-        });
+    // Batch query: Get income transactions grouped by account
+    const incomeByAccount = await prisma.transaction.groupBy({
+      by: ['accountId'],
+      where: {
+        accountId: { in: accountIds },
+        date: { lte: targetDate },
+        type: 'INCOME'
+      },
+      _sum: { amount: true }
+    });
 
-        const transfersTo = await prisma.transfer.findMany({
-          where: {
-            toAccountId: account.id,
-            date: { lte: targetDate }
-          },
-          select: { amount: true }
-        });
+    // Batch query: Get expense transactions grouped by account
+    const expenseByAccount = await prisma.transaction.groupBy({
+      by: ['accountId'],
+      where: {
+        accountId: { in: accountIds },
+        date: { lte: targetDate },
+        type: 'EXPENSE'
+      },
+      _sum: { amount: true }
+    });
 
-        let balance = Number(account.initialBalance);
+    // Batch query: Get outgoing transfers grouped by fromAccountId
+    const transfersFromByAccount = await prisma.transfer.groupBy({
+      by: ['fromAccountId'],
+      where: {
+        fromAccountId: { in: accountIds },
+        date: { lte: targetDate }
+      },
+      _sum: { amount: true }
+    });
 
-        transactions.forEach(transaction => {
-          if (transaction.type === 'INCOME') {
-            balance += Number(transaction.amount);
-          } else {
-            balance -= Number(transaction.amount);
-          }
-        });
+    // Batch query: Get incoming transfers grouped by toAccountId
+    const transfersToByAccount = await prisma.transfer.groupBy({
+      by: ['toAccountId'],
+      where: {
+        toAccountId: { in: accountIds },
+        date: { lte: targetDate }
+      },
+      _sum: { amount: true }
+    });
 
-        transfersFrom.forEach(transfer => {
-          balance -= Number(transfer.amount);
-        });
+    // Create maps for quick lookup
+    const incomeMap = new Map(incomeByAccount.map(i => [i.accountId, Number(i._sum.amount || 0)]));
+    const expenseMap = new Map(expenseByAccount.map(e => [e.accountId, Number(e._sum.amount || 0)]));
+    const transfersFromMap = new Map(transfersFromByAccount.map(t => [t.fromAccountId, Number(t._sum.amount || 0)]));
+    const transfersToMap = new Map(transfersToByAccount.map(t => [t.toAccountId, Number(t._sum.amount || 0)]));
 
-        transfersTo.forEach(transfer => {
-          balance += Number(transfer.amount);
-        });
+    // Calculate balances using maps
+    const accountsWithBalances = accounts.map(account => {
+      const income = incomeMap.get(account.id) || 0;
+      const expense = expenseMap.get(account.id) || 0;
+      const transfersFrom = transfersFromMap.get(account.id) || 0;
+      const transfersTo = transfersToMap.get(account.id) || 0;
 
-        return {
-          ...account,
-          balance
-        };
-      })
-    );
+      const balance = Number(account.initialBalance) + income - expense - transfersFrom + transfersTo;
+
+      return {
+        ...account,
+        balance
+      };
+    });
 
     res.json(convertDecimalToNumber(accountsWithBalances));
   } catch (error) {

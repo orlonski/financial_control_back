@@ -15,6 +15,7 @@ export interface CreateTransactionData {
   installmentNumber?: number;
   totalInstallments?: number;
   recurrenceId?: string;
+  isRecurringCharge?: boolean;
   userId: string;
 }
 
@@ -60,6 +61,35 @@ export class TransactionService {
     const finalYear = invoiceMonth > 11 ? invoiceYear + 1 : invoiceYear;
 
     return new Date(finalYear, finalMonth, dueDay);
+  }
+
+  /**
+   * Calculate the current invoice due date for a credit card
+   * This determines which invoice is currently "open" based on today's date
+   * @param today - Current date
+   * @param closingDay - Day when the invoice closes (1-31)
+   * @param dueDay - Day when the invoice is due (1-31)
+   * @returns Date of the current invoice's due date
+   */
+  static calculateCurrentInvoiceDueDate(
+    today: Date,
+    closingDay: number,
+    dueDay: number
+  ): Date {
+    const todayDay = today.getDate();
+    let invoiceMonth = today.getMonth();
+    let invoiceYear = today.getFullYear();
+
+    // If today > closing day, the current invoice is for next month
+    if (todayDay > closingDay) {
+      invoiceMonth += 1;
+      if (invoiceMonth > 11) {
+        invoiceMonth = 0;
+        invoiceYear += 1;
+      }
+    }
+
+    return new Date(invoiceYear, invoiceMonth, dueDay);
   }
 
   /**
@@ -110,6 +140,7 @@ export class TransactionService {
         installmentNumber: data.installmentNumber,
         totalInstallments: data.totalInstallments,
         recurrenceId: data.recurrenceId,
+        isRecurringCharge: data.isRecurringCharge || false,
         userId: data.userId
       }
     });
@@ -205,6 +236,7 @@ export class TransactionService {
           installmentNumber: i,
           totalInstallments: totalInstallments,
           recurrenceId: recurrence.id,
+          isRecurringCharge: data.isRecurringCharge || false,
           userId: data.userId
         }
       });
@@ -241,6 +273,44 @@ export class TransactionService {
     });
 
     return { transaction, recurrence };
+  }
+
+  /**
+   * Get a single transaction by ID
+   */
+  static async getTransactionById(transactionId: string, userId: string) {
+    const transaction = await prisma.transaction.findFirst({
+      where: {
+        id: transactionId,
+        userId
+      },
+      include: {
+        account: {
+          select: {
+            id: true,
+            name: true,
+            type: true
+          }
+        },
+        category: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            color: true,
+            icon: true
+          }
+        },
+        creditCard: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
+      }
+    });
+
+    return transaction;
   }
 
   /**

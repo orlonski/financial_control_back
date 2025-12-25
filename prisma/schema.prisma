@@ -11,12 +11,14 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                       String    @id @default(uuid())
+  email                    String    @unique
+  password                 String
+  name                     String
+  passwordResetToken       String?
+  passwordResetTokenExpiry DateTime?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 
   accounts     Account[]
   categories   Category[]
@@ -28,21 +30,22 @@ model User {
 }
 
 model Account {
-  id          String   @id @default(uuid())
-  name        String
-  type        String // CHECKING, SAVINGS, CASH, INVESTMENT
-  initialBalance Decimal @default(0) @db.Decimal(15, 2)
-  color       String?
-  userId      String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(uuid())
+  name           String
+  type           String // CHECKING, SAVINGS, CASH, INVESTMENT
+  initialBalance Decimal  @default(0) @db.Decimal(15, 2)
+  color          String?
+  userId         String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transactions       Transaction[]
-  creditCards        CreditCard[]
-  transfersFrom      Transfer[]    @relation("TransferFrom")
-  transfersTo        Transfer[]    @relation("TransferTo")
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions  Transaction[]
+  creditCards   CreditCard[]
+  transfersFrom Transfer[]    @relation("TransferFrom")
+  transfersTo   Transfer[]    @relation("TransferTo")
 
+  @@index([userId])
   @@map("accounts")
 }
 
@@ -59,45 +62,49 @@ model Category {
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions Transaction[]
 
+  @@index([userId])
   @@map("categories")
 }
 
 model CreditCard {
-  id          String   @id @default(uuid())
-  name        String
-  closingDay  Int // 1-31 (dia de fechamento da fatura)
-  dueDay      Int // 1-31 (dia de vencimento da fatura)
-  limit       Decimal? @db.Decimal(15, 2)
-  accountId   String // Conta vinculada que paga a fatura
-  userId      String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(uuid())
+  name       String
+  closingDay Int // 1-31 (dia de fechamento da fatura)
+  dueDay     Int // 1-31 (dia de vencimento da fatura)
+  limit      Decimal? @db.Decimal(15, 2)
+  accountId  String // Conta vinculada que paga a fatura
+  userId     String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
   transactions Transaction[]
 
+  @@index([userId])
+  @@index([accountId])
   @@map("credit_cards")
 }
 
 model Transaction {
-  id                 String    @id @default(uuid())
-  type               String // INCOME, EXPENSE
-  amount             Decimal   @db.Decimal(15, 2)
-  date               DateTime // Para cartão: data de vencimento da fatura
-  purchaseDate       DateTime? // Data real da compra (usado para cartão)
-  description        String
-  notes              String?
-  paid               Boolean   @default(false) // Se a transação foi paga
-  accountId          String
-  categoryId         String
-  creditCardId       String?
-  recurrenceId       String?
-  installmentNumber  Int? // Número da parcela atual (ex: 1, 2, 3)
-  totalInstallments  Int? // Total de parcelas (ex: 3)
-  userId             String
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id                String    @id @default(uuid())
+  type              String // INCOME, EXPENSE
+  amount            Decimal   @db.Decimal(15, 2)
+  date              DateTime // Para cartão: data de vencimento da fatura
+  purchaseDate      DateTime? // Data real da compra (usado para cartão)
+  description       String
+  notes             String?
+  paid              Boolean   @default(false) // Se a transação foi paga
+  isRecurringCharge Boolean   @default(false) // Despesa recorrente (só consome limite na fatura atual)
+  accountId         String
+  categoryId        String
+  creditCardId      String?
+  recurrenceId      String?
+  installmentNumber Int? // Número da parcela atual (ex: 1, 2, 3)
+  totalInstallments Int? // Total de parcelas (ex: 3)
+  userId            String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   account    Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -106,9 +113,13 @@ model Transaction {
   recurrence Recurrence? @relation(fields: [recurrenceId], references: [id], onDelete: SetNull)
 
   @@index([userId, date])
+  @@index([userId, paid])
   @@index([accountId])
+  @@index([accountId, date])
   @@index([categoryId])
   @@index([creditCardId])
+  @@index([creditCardId, paid])
+  @@index([recurrenceId])
   @@map("transactions")
 }
 
@@ -127,6 +138,12 @@ model Transfer {
   fromAccount Account @relation("TransferFrom", fields: [fromAccountId], references: [id], onDelete: Cascade)
   toAccount   Account @relation("TransferTo", fields: [toAccountId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
+  @@index([userId, date])
+  @@index([fromAccountId])
+  @@index([fromAccountId, date])
+  @@index([toAccountId])
+  @@index([toAccountId, date])
   @@map("transfers")
 }
 
@@ -145,4 +162,3 @@ model Recurrence {
 
   @@map("recurrences")
 }
-

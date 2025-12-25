@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { z } from 'zod';
 import { convertDecimalToNumber } from '../utils/decimal';
 import { prisma } from '../server';
 import { authenticateToken } from '../middleware/auth';
+import { sendPasswordResetEmail } from '../utils/email';
 
 const router = Router();
 
@@ -18,6 +20,15 @@ const registerSchema = z.object({
 const loginSchema = z.object({
   email: z.string().email('Invalid email format'),
   password: z.string().min(1, 'Password is required')
+});
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email('Invalid email format')
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(1, 'Token is required'),
+  password: z.string().min(6, 'Password must be at least 6 characters')
 });
 
 // Register
@@ -136,6 +147,87 @@ router.get('/me', authenticateToken, async (req: any, res) => {
     res.json({ user });
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Forgot Password
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = forgotPasswordSchema.parse(req.body);
+
+    const user = await prisma.user.findUnique({
+      where: { email }
+    });
+
+    // Always return success to prevent email enumeration
+    if (!user) {
+      return res.json({ message: 'Se o email existir, você receberá um link de recuperação' });
+    }
+
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const tokenExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    // Save token to user
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordResetToken: resetToken,
+        passwordResetTokenExpiry: tokenExpiry
+      }
+    });
+
+    // Send email
+    await sendPasswordResetEmail(email, resetToken);
+
+    res.json({ message: 'Se o email existir, você receberá um link de recuperação' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.errors[0].message });
+    }
+    console.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Erro ao processar solicitação' });
+  }
+});
+
+// Reset Password
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, password } = resetPasswordSchema.parse(req.body);
+
+    const user = await prisma.user.findFirst({
+      where: {
+        passwordResetToken: token,
+        passwordResetTokenExpiry: {
+          gt: new Date()
+        }
+      }
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: 'Token inválido ou expirado' });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Update password and clear reset token
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        passwordResetToken: null,
+        passwordResetTokenExpiry: null
+      }
+    });
+
+    res.json({ message: 'Senha alterada com sucesso' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.errors[0].message });
+    }
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Erro ao redefinir senha' });
   }
 });
 

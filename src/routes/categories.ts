@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../server';
 import { authenticateToken } from '../middleware/auth';
-import { convertDecimalToNumber } from '../utils/decimal';
 
 const router = Router();
 
@@ -81,20 +80,22 @@ router.put('/:id', authenticateToken, async (req: any, res) => {
   try {
     const data = updateCategorySchema.parse(req.body);
 
-    const category = await prisma.category.updateMany({
+    // First check if category exists and belongs to user
+    const existingCategory = await prisma.category.findFirst({
       where: {
         id: req.params.id,
         userId: req.userId
-      },
-      data
+      }
     });
 
-    if (category.count === 0) {
+    if (!existingCategory) {
       return res.status(404).json({ error: 'Category not found' });
     }
 
-    const updatedCategory = await prisma.category.findUnique({
-      where: { id: req.params.id }
+    // Update and return in single query
+    const updatedCategory = await prisma.category.update({
+      where: { id: req.params.id },
+      data
     });
 
     res.json(updatedCategory);
