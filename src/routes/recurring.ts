@@ -92,32 +92,83 @@ router.get('/:id', authenticateToken, async (req: any, res) => {
   }
 });
 
+// Número de meses para gerar transações futuras
+const MONTHS_TO_GENERATE = 12;
+
 // Create recurring transaction
 router.post('/', authenticateToken, async (req: any, res) => {
   try {
     const data = createRecurringSchema.parse(req.body);
 
-    const nextDueDate = calculateNextDueDate(data.startDate, data.interval, data.intervalCount);
+    // Calcular a última data de geração (12 meses à frente ou endDate, o que vier primeiro)
+    const maxFutureDate = new Date();
+    maxFutureDate.setMonth(maxFutureDate.getMonth() + MONTHS_TO_GENERATE);
 
-    const recurrence = await prisma.recurrence.create({
-      data: {
-        type: 'RECURRING',
-        interval: data.interval,
-        intervalCount: data.intervalCount,
-        startDate: data.startDate,
-        endDate: data.endDate,
-        nextDueDate,
-        description: data.description,
-        amount: data.amount,
-        isActive: true,
-        accountId: data.accountId,
-        categoryId: data.categoryId,
-        creditCardId: data.creditCardId || null,
-        userId: req.userId,
-      },
+    const effectiveEndDate = data.endDate && data.endDate < maxFutureDate
+      ? data.endDate
+      : maxFutureDate;
+
+    // Gerar todas as datas de transação
+    const transactionDates: Date[] = [];
+    let currentDate = new Date(data.startDate);
+
+    while (currentDate <= effectiveEndDate) {
+      transactionDates.push(new Date(currentDate));
+      currentDate = calculateNextDueDate(data.startDate, data.interval, data.intervalCount, currentDate);
+    }
+
+    // Próxima data após a última gerada (para continuar gerando no futuro)
+    const nextDueDate = currentDate;
+
+    // Criar recorrência e transações em uma transação do banco
+    const result = await prisma.$transaction(async (tx) => {
+      // Criar a recorrência
+      const recurrence = await tx.recurrence.create({
+        data: {
+          type: data.type,
+          interval: data.interval,
+          intervalCount: data.intervalCount,
+          startDate: data.startDate,
+          endDate: data.endDate,
+          nextDueDate,
+          description: data.description,
+          amount: data.amount,
+          isActive: true,
+          accountId: data.accountId,
+          categoryId: data.categoryId,
+          creditCardId: data.creditCardId || null,
+          userId: req.userId,
+        },
+      });
+
+      // Criar transações para os próximos 12 meses
+      const transactions = await Promise.all(
+        transactionDates.map((date) =>
+          tx.transaction.create({
+            data: {
+              type: data.type,
+              amount: data.amount,
+              date,
+              description: data.description,
+              accountId: data.accountId,
+              categoryId: data.categoryId,
+              creditCardId: data.creditCardId || null,
+              recurrenceId: recurrence.id,
+              userId: req.userId,
+              paid: false,
+              isRecurringCharge: true, // Marca como recorrente (limite só da fatura atual)
+            },
+          })
+        )
+      );
+
+      return { recurrence, transactions };
     });
 
-    res.status(201).json(convertDecimalToNumber(recurrence));
+    res.status(201).json({
+      ...convertDecimalToNumber(result.recurrence),
+      generatedTransactions: result.transactions.length,
+    });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: error.errors[0].message });
@@ -144,6 +195,7 @@ router.put('/:id', authenticateToken, async (req: any, res) => {
 
     const updateData: any = {};
 
+    if (data.type) updateData.type = data.type;
     if (data.interval) updateData.interval = data.interval;
     if (data.intervalCount) updateData.intervalCount = data.intervalCount;
     if (data.startDate) updateData.startDate = data.startDate;
@@ -267,64 +319,92 @@ router.patch('/:id/resume', authenticateToken, async (req: any, res) => {
   }
 });
 
-// Generate pending transactions from recurring
+// Generate/extend recurring transactions up to 12 months ahead
 router.post('/generate', authenticateToken, async (req: any, res) => {
   try {
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
+    // Data limite: 12 meses à frente
+    const maxFutureDate = new Date();
+    maxFutureDate.setMonth(maxFutureDate.getMonth() + MONTHS_TO_GENERATE);
 
-    // Find all active recurring transactions that are due
-    const dueRecurrences = await prisma.recurrence.findMany({
+    // Buscar todas as recorrências ativas que precisam de extensão
+    const activeRecurrences = await prisma.recurrence.findMany({
       where: {
         userId: req.userId,
         isActive: true,
-        nextDueDate: { lte: today },
+        nextDueDate: { lte: maxFutureDate },
         OR: [
           { endDate: null },
-          { endDate: { gte: today } },
+          { endDate: { gte: new Date() } },
         ],
       },
     });
 
     const generatedTransactions = [];
 
-    for (const recurrence of dueRecurrences) {
+    for (const recurrence of activeRecurrences) {
       if (!recurrence.amount || !recurrence.accountId || !recurrence.categoryId) {
         continue;
       }
 
-      // Determine transaction type from recurrence type or default to EXPENSE
-      const transactionType = recurrence.type === 'RECURRING' ? 'EXPENSE' : 'EXPENSE';
+      // Calcular data efetiva de fim
+      const effectiveEndDate = recurrence.endDate && recurrence.endDate < maxFutureDate
+        ? recurrence.endDate
+        : maxFutureDate;
 
-      // Create the transaction
-      const transaction = await prisma.transaction.create({
-        data: {
-          type: transactionType,
-          amount: recurrence.amount,
-          date: recurrence.nextDueDate!,
-          description: recurrence.description || 'Transação recorrente',
-          accountId: recurrence.accountId,
-          categoryId: recurrence.categoryId,
-          creditCardId: recurrence.creditCardId,
-          recurrenceId: recurrence.id,
-          userId: req.userId,
-          paid: false,
-        },
-      });
+      // Gerar transações do nextDueDate até effectiveEndDate
+      const transactionDates: Date[] = [];
+      let currentDate = recurrence.nextDueDate ? new Date(recurrence.nextDueDate) : new Date(recurrence.startDate);
 
-      generatedTransactions.push(transaction);
+      while (currentDate <= effectiveEndDate) {
+        transactionDates.push(new Date(currentDate));
+        currentDate = calculateNextDueDate(
+          recurrence.startDate,
+          recurrence.interval,
+          recurrence.intervalCount,
+          currentDate
+        );
+      }
 
-      // Update next due date
-      const nextDueDate = calculateNextDueDate(
-        recurrence.startDate,
-        recurrence.interval,
-        recurrence.intervalCount,
-        recurrence.nextDueDate!
-      );
+      // Criar transações
+      const transactionType = recurrence.type === 'INCOME' ? 'INCOME' : 'EXPENSE';
 
+      for (const date of transactionDates) {
+        // Verificar se já existe transação para essa data
+        const existingTransaction = await prisma.transaction.findFirst({
+          where: {
+            recurrenceId: recurrence.id,
+            date: {
+              gte: new Date(date.getFullYear(), date.getMonth(), date.getDate()),
+              lt: new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1),
+            },
+          },
+        });
+
+        if (!existingTransaction) {
+          const transaction = await prisma.transaction.create({
+            data: {
+              type: transactionType,
+              amount: recurrence.amount,
+              date,
+              description: recurrence.description || 'Transação recorrente',
+              accountId: recurrence.accountId,
+              categoryId: recurrence.categoryId,
+              creditCardId: recurrence.creditCardId,
+              recurrenceId: recurrence.id,
+              userId: req.userId,
+              paid: false,
+              isRecurringCharge: true,
+            },
+          });
+
+          generatedTransactions.push(transaction);
+        }
+      }
+
+      // Atualizar nextDueDate para a próxima data após maxFutureDate
       await prisma.recurrence.update({
         where: { id: recurrence.id },
-        data: { nextDueDate },
+        data: { nextDueDate: currentDate },
       });
     }
 
