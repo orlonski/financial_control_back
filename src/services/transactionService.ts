@@ -93,6 +93,18 @@ export class TransactionService {
   }
 
   /**
+   * Check if a date is today (comparing only year, month, day)
+   */
+  static isToday(date: Date): boolean {
+    const today = new Date();
+    return (
+      date.getUTCFullYear() === today.getFullYear() &&
+      date.getUTCMonth() === today.getMonth() &&
+      date.getUTCDate() === today.getDate()
+    );
+  }
+
+  /**
    * Create a single transaction
    */
   static async createTransaction(data: CreateTransactionData) {
@@ -126,6 +138,11 @@ export class TransactionService {
       purchaseDate = actualPurchaseDate;
     }
 
+    // Auto-mark as paid: EXPENSE without credit card and date is today
+    const shouldAutoPay = !data.creditCardId &&
+                          data.type === 'EXPENSE' &&
+                          this.isToday(transactionDate);
+
     return await prisma.transaction.create({
       data: {
         type: data.type,
@@ -134,6 +151,8 @@ export class TransactionService {
         purchaseDate: purchaseDate,
         description: data.description,
         notes: data.notes,
+        paid: shouldAutoPay,
+        paidAt: shouldAutoPay ? new Date() : null,
         accountId: data.accountId,
         categoryId: data.categoryId,
         creditCardId: data.creditCardId || undefined,
