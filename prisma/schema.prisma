@@ -25,6 +25,9 @@ model User {
   creditCards  CreditCard[]
   transactions Transaction[]
   transfers    Transfer[]
+  budgets      Budget[]
+  goals        Goal[]
+  reminders    Reminder[]
 
   @@map("users")
 }
@@ -44,6 +47,7 @@ model Account {
   creditCards   CreditCard[]
   transfersFrom Transfer[]    @relation("TransferFrom")
   transfersTo   Transfer[]    @relation("TransferTo")
+  goals         Goal[]
 
   @@index([userId])
   @@map("accounts")
@@ -61,6 +65,7 @@ model Category {
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions Transaction[]
+  budgets      Budget[]
 
   @@index([userId])
   @@map("categories")
@@ -80,6 +85,7 @@ model CreditCard {
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
   transactions Transaction[]
+  reminders    Reminder[]
 
   @@index([userId])
   @@index([accountId])
@@ -112,6 +118,7 @@ model Transaction {
   category   Category    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   creditCard CreditCard? @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
   recurrence Recurrence? @relation(fields: [recurrenceId], references: [id], onDelete: SetNull)
+  reminders  Reminder[]
 
   @@index([userId, date])
   @@index([userId, paid])
@@ -155,11 +162,131 @@ model Recurrence {
   intervalCount     Int // 1-30
   startDate         DateTime
   endDate           DateTime?
+  nextDueDate       DateTime? // Próxima data de vencimento
   totalInstallments Int? // Para parcelamento
+  description       String? // Descrição da recorrência
+  amount            Decimal?  @db.Decimal(15, 2) // Valor da recorrência
+  isActive          Boolean   @default(true) // Se está ativa
+  accountId         String? // Conta vinculada
+  categoryId        String? // Categoria vinculada
+  creditCardId      String? // Cartão vinculado (opcional)
+  userId            String? // Usuário dono da recorrência
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
   transactions Transaction[]
+  reminders    Reminder[]
 
+  @@index([userId])
+  @@index([isActive])
   @@map("recurrences")
+}
+
+// ==========================================
+// ORÇAMENTOS (Budgets)
+// ==========================================
+
+model Budget {
+  id         String   @id @default(uuid())
+  amount     Decimal  @db.Decimal(15, 2) // Limite mensal
+  month      Int // 1-12
+  year       Int
+  userId     String
+  categoryId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, categoryId, month, year])
+  @@index([userId])
+  @@index([userId, month, year])
+  @@map("budgets")
+}
+
+// ==========================================
+// METAS FINANCEIRAS (Goals)
+// ==========================================
+
+enum GoalStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+model Goal {
+  id            String     @id @default(uuid())
+  name          String
+  targetAmount  Decimal    @db.Decimal(15, 2)
+  currentAmount Decimal    @default(0) @db.Decimal(15, 2)
+  deadline      DateTime
+  color         String?
+  icon          String?
+  status        GoalStatus @default(ACTIVE)
+  completedAt   DateTime?
+  userId        String
+  accountId     String? // Conta vinculada (opcional)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account       Account?           @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  contributions GoalContribution[]
+
+  @@index([userId])
+  @@index([userId, status])
+  @@map("goals")
+}
+
+model GoalContribution {
+  id        String   @id @default(uuid())
+  amount    Decimal  @db.Decimal(15, 2)
+  date      DateTime
+  notes     String?
+  goalId    String
+  createdAt DateTime @default(now())
+
+  goal Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@index([goalId])
+  @@map("goal_contributions")
+}
+
+// ==========================================
+// LEMBRETES (Reminders)
+// ==========================================
+
+enum ReminderStatus {
+  PENDING
+  PAID
+  DISMISSED
+  OVERDUE
+}
+
+model Reminder {
+  id            String         @id @default(uuid())
+  title         String
+  description   String?
+  amount        Decimal        @db.Decimal(15, 2)
+  dueDate       DateTime
+  reminderDays  Int            @default(3) // Dias antes para lembrar
+  status        ReminderStatus @default(PENDING)
+  isRecurring   Boolean        @default(false)
+  userId        String
+  transactionId String?
+  creditCardId  String?
+  recurrenceId  String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  creditCard  CreditCard?  @relation(fields: [creditCardId], references: [id], onDelete: SetNull)
+  recurrence  Recurrence?  @relation(fields: [recurrenceId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([userId, status])
+  @@index([userId, dueDate])
+  @@map("reminders")
 }

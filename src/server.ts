@@ -11,6 +11,10 @@ import creditCardRoutes from './routes/creditCards';
 import transactionRoutes from './routes/transactions';
 import transferRoutes from './routes/transfers';
 import reportRoutes from './routes/reports';
+import recurringRoutes from './routes/recurring';
+import budgetRoutes from './routes/budgets';
+import goalRoutes from './routes/goals';
+import reminderRoutes from './routes/reminders';
 
 dotenv.config();
 
@@ -29,6 +33,10 @@ app.use('/api/credit-cards', creditCardRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/transfers', transferRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/recurring', recurringRoutes);
+app.use('/api/budgets', budgetRoutes);
+app.use('/api/goals', goalRoutes);
+app.use('/api/reminders', reminderRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
