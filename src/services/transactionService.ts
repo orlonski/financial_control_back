@@ -492,7 +492,9 @@ export class TransactionService {
   static async updateTransactionPaidStatus(
     transactionId: string,
     userId: string,
-    paid: boolean
+    paid: boolean,
+    paidAt?: Date,
+    accountId?: string
   ) {
     // Verify transaction belongs to user
     const existingTransaction = await prisma.transaction.findFirst({
@@ -506,9 +508,38 @@ export class TransactionService {
       throw new Error('Transaction not found');
     }
 
+    // If accountId is provided, verify it belongs to user
+    if (accountId) {
+      const account = await prisma.account.findFirst({
+        where: {
+          id: accountId,
+          userId
+        }
+      });
+
+      if (!account) {
+        throw new Error('Account not found');
+      }
+    }
+
+    // Build update data
+    const updateData: {
+      paid: boolean;
+      paidAt: Date | null;
+      accountId?: string;
+    } = {
+      paid,
+      paidAt: paid ? (paidAt || new Date()) : null
+    };
+
+    // Only update accountId if provided
+    if (accountId) {
+      updateData.accountId = accountId;
+    }
+
     const transaction = await prisma.transaction.update({
       where: { id: transactionId },
-      data: { paid },
+      data: updateData,
       include: {
         account: {
           select: {

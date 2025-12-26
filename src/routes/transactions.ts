@@ -192,7 +192,7 @@ router.delete('/:id', authenticateToken, async (req: any, res) => {
 // Toggle transaction paid status
 router.patch('/:id/paid', authenticateToken, async (req: any, res) => {
   try {
-    const { paid } = req.body;
+    const { paid, paidAt, accountId } = req.body;
 
     if (typeof paid !== 'boolean') {
       return res.status(400).json({ error: 'Paid field must be a boolean' });
@@ -201,7 +201,9 @@ router.patch('/:id/paid', authenticateToken, async (req: any, res) => {
     const transaction = await TransactionService.updateTransactionPaidStatus(
       req.params.id,
       req.userId,
-      paid
+      paid,
+      paidAt ? new Date(paidAt) : undefined,
+      accountId
     );
 
     res.json(convertDecimalToNumber(transaction));

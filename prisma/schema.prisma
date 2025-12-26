@@ -95,6 +95,7 @@ model Transaction {
   description       String
   notes             String?
   paid              Boolean   @default(false) // Se a transação foi paga
+  paidAt            DateTime? // Data em que foi efetivamente pago
   isRecurringCharge Boolean   @default(false) // Despesa recorrente (só consome limite na fatura atual)
   accountId         String
   categoryId        String
