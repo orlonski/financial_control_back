@@ -526,11 +526,17 @@ export class TransactionService {
     const updateData: {
       paid: boolean;
       paidAt: Date | null;
+      date?: Date;
       accountId?: string;
     } = {
       paid,
       paidAt: paid ? (paidAt || new Date()) : null
     };
+
+    // If marking as paid with a date, update the transaction date
+    if (paid && paidAt) {
+      updateData.date = paidAt;
+    }
 
     // Only update accountId if provided
     if (accountId) {
