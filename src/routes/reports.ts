@@ -56,7 +56,7 @@ router.get('/monthly-statement', authenticateToken, async (req: any, res) => {
           }
         }
       },
-      orderBy: { date: 'asc' }
+      orderBy: [{ date: 'asc' }, { createdAt: 'asc' }]
     });
 
     // Get all transfers for the month
@@ -94,7 +94,7 @@ router.get('/monthly-statement', authenticateToken, async (req: any, res) => {
           }
         }
       },
-      orderBy: { date: 'asc' }
+      orderBy: [{ date: 'asc' }, { createdAt: 'asc' }]
     });
 
     // Get initial balances for all accounts (or just the filtered one)

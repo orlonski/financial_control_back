@@ -39,7 +39,7 @@ router.get('/', authenticateToken, async (req: any, res) => {
           }
         }
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { name: 'asc' }
     });
 
     if (creditCards.length === 0) {

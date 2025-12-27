@@ -388,7 +388,7 @@ export class TransactionService {
           }
         }
       },
-      orderBy: { date: 'desc' },
+      orderBy: { createdAt: 'desc' },
       take: filters.limit || 100,
       skip: filters.offset || 0
     });

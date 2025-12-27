@@ -26,7 +26,7 @@ router.get('/', authenticateToken, async (req: any, res) => {
   try {
     const accounts = await prisma.account.findMany({
       where: { userId: req.userId },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { name: 'asc' }
     });
 
     res.json(convertDecimalToNumber(accounts));
@@ -210,7 +210,7 @@ router.get('/balances/all', authenticateToken, async (req: any, res) => {
 
     const accounts = await prisma.account.findMany({
       where: accountWhere,
-      orderBy: { createdAt: 'desc' }
+      orderBy: { name: 'asc' }
     });
 
     if (accounts.length === 0) {
