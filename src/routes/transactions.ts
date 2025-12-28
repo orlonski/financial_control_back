@@ -53,6 +53,16 @@ const createRecurringSchema = z.object({
 
 const updateTransactionSchema = createTransactionSchema.partial();
 
+// Get transaction count
+router.get('/count', authenticateToken, async (req: any, res) => {
+  try {
+    const result = await TransactionService.getTransactionCount(req.userId);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Get transactions
 router.get('/', authenticateToken, async (req: any, res) => {
   try {

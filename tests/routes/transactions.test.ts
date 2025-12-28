@@ -227,6 +227,90 @@ describe('Transactions API', () => {
     })
   })
 
+  describe('GET /api/transactions/count', () => {
+    it('should return zero count when user has no transactions', async () => {
+      const response = await request(app)
+        .get('/api/transactions/count')
+        .set('Authorization', `Bearer ${authToken}`)
+        .set('user-id', userId)
+        .expect(200)
+
+      expect(response.body.count).toBe(0)
+      expect(response.body.lastTransaction).toBeNull()
+    })
+
+    it('should return correct count and last transaction date', async () => {
+      await prisma.transaction.createMany({
+        data: [
+          {
+            type: 'INCOME',
+            amount: 1000,
+            date: new Date('2024-01-15'),
+            description: 'First Transaction',
+            accountId,
+            categoryId,
+            userId
+          },
+          {
+            type: 'EXPENSE',
+            amount: 200,
+            date: new Date('2024-02-20'),
+            description: 'Second Transaction',
+            accountId,
+            categoryId,
+            userId
+          }
+        ]
+      })
+
+      const response = await request(app)
+        .get('/api/transactions/count')
+        .set('Authorization', `Bearer ${authToken}`)
+        .set('user-id', userId)
+        .expect(200)
+
+      expect(response.body.count).toBe(2)
+      expect(response.body.lastTransaction).toBeDefined()
+    })
+
+    it('should only count transactions for the authenticated user', async () => {
+      const otherUser = await createTestUser('other@test.com')
+      const otherAccount = await createTestAccount(otherUser.id)
+      const otherCategory = await createTestCategory(otherUser.id)
+
+      await prisma.transaction.createMany({
+        data: [
+          {
+            type: 'INCOME',
+            amount: 1000,
+            date: new Date('2024-01-15'),
+            description: 'User Transaction',
+            accountId,
+            categoryId,
+            userId
+          },
+          {
+            type: 'EXPENSE',
+            amount: 500,
+            date: new Date('2024-02-15'),
+            description: 'Other User Transaction',
+            accountId: otherAccount.id,
+            categoryId: otherCategory.id,
+            userId: otherUser.id
+          }
+        ]
+      })
+
+      const response = await request(app)
+        .get('/api/transactions/count')
+        .set('Authorization', `Bearer ${authToken}`)
+        .set('user-id', userId)
+        .expect(200)
+
+      expect(response.body.count).toBe(1)
+    })
+  })
+
   describe('GET /api/transactions', () => {
     beforeEach(async () => {
       // Criar algumas transações de teste

@@ -425,4 +425,86 @@ describe('TransactionService', () => {
       expect(summary.transactionCount).toBe(2)
     })
   })
+
+  describe('getTransactionCount', () => {
+    it('should return zero count when user has no transactions', async () => {
+      const result = await TransactionService.getTransactionCount(userId)
+
+      expect(result.count).toBe(0)
+      expect(result.lastTransaction).toBeNull()
+    })
+
+    it('should return correct count and last transaction date', async () => {
+      await prisma.transaction.createMany({
+        data: [
+          {
+            type: 'INCOME',
+            amount: 1000,
+            date: new Date('2024-01-15'),
+            description: 'First Transaction',
+            accountId,
+            categoryId,
+            userId
+          },
+          {
+            type: 'EXPENSE',
+            amount: 200,
+            date: new Date('2024-02-20'),
+            description: 'Second Transaction',
+            accountId,
+            categoryId,
+            userId
+          },
+          {
+            type: 'EXPENSE',
+            amount: 300,
+            date: new Date('2024-03-25'),
+            description: 'Third Transaction',
+            accountId,
+            categoryId,
+            userId
+          }
+        ]
+      })
+
+      const result = await TransactionService.getTransactionCount(userId)
+
+      expect(result.count).toBe(3)
+      expect(result.lastTransaction).toEqual(new Date('2024-03-25'))
+    })
+
+    it('should only count transactions for the specified user', async () => {
+      const otherUser = await createTestUser('other@test.com')
+      const otherAccount = await createTestAccount(otherUser.id)
+      const otherCategory = await createTestCategory(otherUser.id)
+
+      await prisma.transaction.createMany({
+        data: [
+          {
+            type: 'INCOME',
+            amount: 1000,
+            date: new Date('2024-01-15'),
+            description: 'User Transaction',
+            accountId,
+            categoryId,
+            userId
+          },
+          {
+            type: 'EXPENSE',
+            amount: 500,
+            date: new Date('2024-02-15'),
+            description: 'Other User Transaction',
+            accountId: otherAccount.id,
+            categoryId: otherCategory.id,
+            userId: otherUser.id
+          }
+        ]
+      })
+
+      const result = await TransactionService.getTransactionCount(userId)
+
+      expect(result.count).toBe(1)
+      expect(result.lastTransaction).toEqual(new Date('2024-01-15'))
+    })
+  })
 })
