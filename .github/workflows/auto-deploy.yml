@@ -1,0 +1,28 @@
+name: Auto Deploy
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Deploy to EasyPanel
+        run: |
+          curl -X POST "http://149.102.138.127:3000/api/box/deploy/b512901b35c5c2a7cb83"
+          
+      - name: Wait for deployment
+        run: sleep 30
+        
+      - name: Health Check
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://evolution-financial-control-back.zj8v6e.easypanel.host/api/health)
+          if [ "$response" = "200" ]; then
+            echo "✅ Deploy successful! Health check passed."
+          else
+            echo "⚠️ Health check returned: $response"
+            exit 1
+          fi
