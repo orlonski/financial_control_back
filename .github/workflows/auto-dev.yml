@@ -3,9 +3,11 @@ name: Auto Dev - Claude Code
 on:
   issues:
     types: [labeled]
+  issue_comment:
+    types: [created]
 
 jobs:
-  start-automation:
+  planner:
     if: github.event.label.name == 'auto-dev'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -18,26 +20,26 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Start Background Executor
+      - name: Run Planner
         run: |
-          ssh -o StrictHostKeyChecking=no claude-automation@${{ secrets.SERVER_HOST }} "source ~/crewai-env/bin/activate && cd ~/crewai-agents && nohup python robust_executor.py '${{ github.event.issue.number }}' '${{ github.event.issue.title }}' '${{ github.event.issue.body }}' > ~/logs/issue_${{ github.event.issue.number }}.log 2>&1 &"
-          echo "Executor iniciado em background"
+          ssh -o StrictHostKeyChecking=no claude-automation@${{ secrets.SERVER_HOST }} "source ~/crewai-env/bin/activate && cd ~/crewai-agents && nohup python planner_robust.py '${{ github.event.issue.number }}' '${{ github.event.issue.title }}' '${{ github.event.issue.body }}' > ~/logs/planner_${{ github.event.issue.number }}.log 2>&1 &"
 
-      - name: Update Label
-        uses: actions/github-script@v7
-        with:
-          script: |
-            try {
-              await github.rest.issues.removeLabel({
-                issue_number: ${{ github.event.issue.number }},
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                name: 'auto-dev'
-              })
-            } catch (e) {}
-            await github.rest.issues.addLabels({
-              issue_number: ${{ github.event.issue.number }},
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              labels: ['em-execucao']
-            })
+  executor:
+    if: |
+      github.event_name == 'issue_comment' &&
+      contains(github.event.issue.labels.*.name, 'aguardando-aprovacao') &&
+      contains(github.event.comment.body, 'aprovado')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Run Executor
+        run: |
+          ssh -o StrictHostKeyChecking=no claude-automation@${{ secrets.SERVER_HOST }} "source ~/crewai-env/bin/activate && cd ~/crewai-agents && nohup python executor_robust.py '${{ github.event.issue.number }}' '${{ github.event.issue.title }}' '${{ github.event.issue.body }}' > ~/logs/executor_${{ github.event.issue.number }}.log 2>&1 &"
