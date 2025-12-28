@@ -506,6 +506,26 @@ export class TransactionService {
   }
 
   /**
+   * Get transaction count for a user
+   */
+  static async getTransactionCount(userId: string) {
+    const count = await prisma.transaction.count({
+      where: { userId }
+    });
+
+    const lastTransaction = await prisma.transaction.findFirst({
+      where: { userId },
+      orderBy: { date: 'desc' },
+      select: { date: true }
+    });
+
+    return {
+      count,
+      lastTransaction: lastTransaction?.date || null
+    };
+  }
+
+  /**
    * Update transaction paid status
    */
   static async updateTransactionPaidStatus(
