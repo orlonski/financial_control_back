@@ -1,14 +1,14 @@
 import request from 'supertest'
 import express from 'express'
-import accountsRoutes from '../src/routes/accounts'
-import { prisma, createTestUser, createTestAccount } from './setup'
+import accountsRoutes from '../../src/routes/accounts'
+import { prisma, createTestUser, createTestAccount } from '../setup'
 
 const app = express()
 app.use(express.json())
 app.use('/api/accounts', accountsRoutes)
 
 // Mock do middleware de autenticação
-jest.mock('../src/middleware/auth', () => ({
+jest.mock('../../src/middleware/auth', () => ({
   authenticateToken: (req: any, res: any, next: any) => {
     req.userId = req.headers['user-id'] || 'test-user-id'
     next()

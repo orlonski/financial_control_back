@@ -195,7 +195,14 @@ router.delete('/:id', authenticateToken, async (req: any, res) => {
 
     res.status(204).send();
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message || 'Internal server error' });
+    const message = (error as Error).message;
+    if (message === 'NOT_FOUND') {
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+    if (message === 'FORBIDDEN') {
+      return res.status(403).json({ error: 'Transaction does not belong to user' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
