@@ -1,18 +1,29 @@
 import { PrismaClient } from '@prisma/client'
 import { execSync } from 'child_process'
 import * as dotenv from 'dotenv'
+import * as path from 'path'
 
-// Carregar variáveis de ambiente
-dotenv.config()
+// IMPORTANTE: Carregar .env.test para testes, NUNCA usar banco de produção!
+const envPath = path.resolve(__dirname, '..', '.env.test')
+dotenv.config({ path: envPath })
 
-// Mock do Prisma para testes
+// Verificar se está usando banco de teste
+const dbUrl = process.env.DATABASE_URL || ''
+if (!dbUrl.includes('_test')) {
+  console.error('ERRO CRÍTICO: Tentando rodar testes em banco que não é de teste!')
+  console.error('DATABASE_URL deve conter "_test" no nome do banco.')
+  console.error('Atual:', dbUrl)
+  process.exit(1)
+}
+
 const prisma = new PrismaClient()
 
-// Setup global para testes
 beforeAll(async () => {
-  // Executar migrações do banco de teste
   try {
-    execSync('npx prisma migrate deploy', { stdio: 'inherit' })
+    execSync('npx prisma migrate deploy', { 
+      stdio: 'inherit',
+      env: { ...process.env, DATABASE_URL: dbUrl }
+    })
   } catch (error) {
     console.warn('Migration failed, continuing with tests')
   }
@@ -22,9 +33,8 @@ afterAll(async () => {
   await prisma.$disconnect()
 })
 
-// Limpar banco entre testes
+// Limpar banco entre testes (APENAS banco de teste!)
 beforeEach(async () => {
-  // Deletar dados em ordem reversa das dependências
   try {
     await prisma.transfer.deleteMany()
     await prisma.transaction.deleteMany()
@@ -33,22 +43,20 @@ beforeEach(async () => {
     await prisma.account.deleteMany()
     await prisma.user.deleteMany()
   } catch (error) {
-    // Ignora erro se banco não estiver disponível (para testes que não precisam de banco)
+    // Ignora erro se tabelas não existirem ainda
   }
 })
 
-// Helper para criar usuário de teste
 export const createTestUser = async (email = 'test@test.com', password = '123456') => {
   return await prisma.user.create({
     data: {
       email,
-      password: password, // Em produção seria hash
+      password,
       name: 'Test User'
     }
   })
 }
 
-// Helper para criar conta de teste
 export const createTestAccount = async (userId: string, name = 'Test Account') => {
   return await prisma.account.create({
     data: {
@@ -60,7 +68,6 @@ export const createTestAccount = async (userId: string, name = 'Test Account') =
   })
 }
 
-// Helper para criar categoria de teste
 export const createTestCategory = async (userId: string, name = 'Test Category') => {
   return await prisma.category.create({
     data: {
@@ -71,7 +78,6 @@ export const createTestCategory = async (userId: string, name = 'Test Category')
   })
 }
 
-// Helper para criar cartão de teste
 export const createTestCreditCard = async (userId: string, accountId: string, name = 'Test Card') => {
   return await prisma.creditCard.create({
     data: {
