@@ -3,13 +3,14 @@ import { z } from 'zod';
 import { prisma } from '../server';
 import { authenticateToken } from '../middleware/auth';
 import { convertDecimalToNumber } from '../utils/decimal';
+import { parseDateToBrazilTimezone } from '../utils/date';
 
 const router = Router();
 
 // Validation schemas
 const createTransferSchema = z.object({
   amount: z.number().positive('Amount must be positive'),
-  date: z.string().transform(str => new Date(str)),
+  date: z.string().transform(str => parseDateToBrazilTimezone(str)),
   description: z.string().optional(),
   fromAccountId: z.string().min(1, 'From account ID is required'),
   toAccountId: z.string().min(1, 'To account ID is required')
@@ -20,7 +21,7 @@ const createTransferSchema = z.object({
 
 const updateTransferSchema = z.object({
   amount: z.number().positive('Amount must be positive').optional(),
-  date: z.string().transform(str => new Date(str)).optional(),
+  date: z.string().transform(str => parseDateToBrazilTimezone(str)).optional(),
   description: z.string().optional(),
   fromAccountId: z.string().min(1, 'From account ID is required').optional(),
   toAccountId: z.string().min(1, 'To account ID is required').optional()

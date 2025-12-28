@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authenticateToken } from '../middleware/auth';
 import { prisma } from '../server';
 import { convertDecimalToNumber } from '../utils/decimal';
+import { parseDateToBrazilTimezone } from '../utils/date';
 
 const router = Router();
 
@@ -11,7 +12,7 @@ const createReminderSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   description: z.string().optional(),
   amount: z.number().positive('Amount must be positive'),
-  dueDate: z.string().transform(str => new Date(str)),
+  dueDate: z.string().transform(str => parseDateToBrazilTimezone(str)),
   reminderDays: z.number().min(0).max(30).default(3),
   creditCardId: z.string().optional(),
   isRecurring: z.boolean().default(false),
