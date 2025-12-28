@@ -1,7 +1,7 @@
 import request from 'supertest'
 import express from 'express'
-import authRoutes from '../src/routes/auth'
-import { prisma, createTestUser } from './setup'
+import authRoutes from '../../src/routes/auth'
+import { prisma, createTestUser } from '../setup'
 
 const app = express()
 app.use(express.json())

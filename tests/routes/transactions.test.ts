@@ -1,14 +1,14 @@
 import request from 'supertest'
 import express from 'express'
-import transactionsRoutes from '../src/routes/transactions'
-import { prisma, createTestUser, createTestAccount, createTestCategory, createTestCreditCard } from './setup'
+import transactionsRoutes from '../../src/routes/transactions'
+import { prisma, createTestUser, createTestAccount, createTestCategory, createTestCreditCard } from '../setup'
 
 const app = express()
 app.use(express.json())
 app.use('/api/transactions', transactionsRoutes)
 
 // Mock do middleware de autenticação
-jest.mock('../src/middleware/auth', () => ({
+jest.mock('../../src/middleware/auth', () => ({
   authenticateToken: (req: any, res: any, next: any) => {
     req.userId = req.headers['user-id'] || 'test-user-id'
     next()
@@ -533,6 +533,38 @@ describe('Transactions API', () => {
         .set('Authorization', `Bearer ${authToken}`)
         .set('user-id', userId)
         .expect(404)
+    })
+
+    it('should return 403 when trying to delete transaction from another user', async () => {
+      const otherUser = await createTestUser('other@test.com')
+      const otherAccount = await createTestAccount(otherUser.id)
+      const otherCategory = await createTestCategory(otherUser.id)
+
+      const otherTransaction = await prisma.transaction.create({
+        data: {
+          type: 'EXPENSE',
+          amount: 200,
+          date: new Date(),
+          description: 'Other User Transaction',
+          accountId: otherAccount.id,
+          categoryId: otherCategory.id,
+          userId: otherUser.id
+        }
+      })
+
+      const response = await request(app)
+        .delete(`/api/transactions/${otherTransaction.id}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .set('user-id', userId)
+        .expect(403)
+
+      expect(response.body.error).toBe('Transaction does not belong to user')
+
+      // Verify the transaction still exists
+      const transaction = await prisma.transaction.findUnique({
+        where: { id: otherTransaction.id }
+      })
+      expect(transaction).not.toBeNull()
     })
   })
 })
