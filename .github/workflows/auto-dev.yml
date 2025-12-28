@@ -3,15 +3,20 @@ name: Auto Dev - Claude Code
 on:
   issues:
     types: [labeled]
+  issue_comment:
+    types: [created]
 
 jobs:
-  auto-dev:
+  # ===========================================
+  # JOB 1: PLANEJAMENTO (quando adiciona label auto-dev)
+  # ===========================================
+  planner:
     if: github.event.label.name == 'auto-dev'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     
     steps:
-      - name: Comment - Iniciando
+      - name: Comment - Iniciando Análise
         uses: actions/github-script@v7
         with:
           script: |
@@ -19,7 +24,7 @@ jobs:
               issue_number: ${{ github.event.issue.number }},
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '🚀 **Automação iniciada!**\n\n⏳ Conectando no servidor...'
+              body: '🚀 **Automação iniciada!**\n\n📋 Agente Planejador analisando a tarefa...'
             })
 
       - name: Setup SSH
@@ -29,82 +34,30 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Comment - Claude Trabalhando
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: ${{ github.event.issue.number }},
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: '🤖 **Claude Code trabalhando...**\n\n```\nLendo o projeto...\nAnalisando a tarefa...\nDesenvolvendo solução...\n```\n\n⏳ Isso pode levar alguns minutos.'
-            })
-          
-      - name: Run Claude Code Automation
-        id: automation
+      - name: Run Planner Agent
+        id: planner
         run: |
-          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ServerAliveCountMax=10 claude-automation@${{ secrets.SERVER_HOST }} "nohup /home/claude-automation/scripts/dev-automation.sh '${{ github.event.issue.number }}' '${{ github.event.issue.title }}' 'Issue do GitHub' > /home/claude-automation/logs/action_${{ github.event.issue.number }}.log 2>&1 &"
-          sleep 10
-          
-      - name: Wait for completion
-        id: wait
-        run: |
-          for i in {1..60}; do
-            echo "Verificando status... tentativa $i"
-            RESULT=$(ssh -o StrictHostKeyChecking=no claude-automation@${{ secrets.SERVER_HOST }} "cat /home/claude-automation/logs/action_${{ github.event.issue.number }}.log 2>/dev/null | tail -20 || echo 'aguardando'")
-            echo "$RESULT"
-            
-            if echo "$RESULT" | grep -q "Concluído!"; then
-              echo "Automação concluída!"
-              
-              # Extrair URL do PR
-              PR_URL=$(echo "$RESULT" | grep -o 'https://github.com/[^[:space:]]*pull/[0-9]*' | tail -1)
-              echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
-              echo "status=success" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-            
-            if echo "$RESULT" | grep -q "error\|Error\|ERRO"; then
-              echo "status=error" >> $GITHUB_OUTPUT
-              echo "error_msg=$RESULT" >> $GITHUB_OUTPUT
-              exit 1
-            fi
-            
-            sleep 10
-          done
-          echo "status=timeout" >> $GITHUB_OUTPUT
-          exit 1
+          RESULT=$(ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 claude-automation@${{ secrets.SERVER_HOST }} "source ~/crewai-env/bin/activate && cd ~/crewai-agents && python planner_agent.py '${{ github.event.issue.number }}' '${{ github.event.issue.title }}' 'Issue do GitHub'")
+          echo "plan<<ENDOFPLAN" >> $GITHUB_OUTPUT
+          echo "$RESULT" >> $GITHUB_OUTPUT
+          echo "ENDOFPLAN" >> $GITHUB_OUTPUT
 
-      - name: Comment - Sucesso
-        if: steps.wait.outputs.status == 'success'
+      - name: Comment - Plano
         uses: actions/github-script@v7
         with:
           script: |
+            const plan = `${{ steps.planner.outputs.plan }}`;
             github.rest.issues.createComment({
               issue_number: ${{ github.event.issue.number }},
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '✅ **Desenvolvimento concluído!**\n\n🔗 **Pull Request:** ${{ steps.wait.outputs.pr_url }}\n\n📝 Revise o código e faça o merge quando estiver pronto.\n\n---\n_O deploy será automático após o merge._'
-            })
-            
-      - name: Comment - Erro
-        if: failure()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: ${{ github.event.issue.number }},
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: '❌ **Erro na automação**\n\nAlgo deu errado durante o desenvolvimento.\n\n🔍 Verifique os logs em: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\n---\n_Você pode tentar novamente removendo e adicionando a label `auto-dev`._'
+              body: `🤖 **Agente Planejador concluiu a análise:**\n\n${plan}\n\n---\n⏳ **Aguardando aprovação.** Comente **"aprovado"** para iniciar o desenvolvimento.`
             })
 
-      - name: Update Labels
-        if: steps.wait.outputs.status == 'success'
+      - name: Update Label
         uses: actions/github-script@v7
         with:
           script: |
-            // Remove auto-dev label
             try {
               await github.rest.issues.removeLabel({
                 issue_number: ${{ github.event.issue.number }},
@@ -112,14 +65,94 @@ jobs:
                 repo: context.repo.repo,
                 name: 'auto-dev'
               })
-            } catch (e) {
-              console.log('Label auto-dev não encontrada')
-            }
+            } catch (e) {}
             
-            // Add em-review label
+            await github.rest.issues.addLabels({
+              issue_number: ${{ github.event.issue.number }},
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['aguardando-aprovacao']
+            })
+
+  # ===========================================
+  # JOB 2: EXECUÇÃO (quando comenta "aprovado")
+  # ===========================================
+  executor:
+    if: |
+      github.event_name == 'issue_comment' &&
+      contains(github.event.issue.labels.*.name, 'aguardando-aprovacao') &&
+      contains(toLower(github.event.comment.body), 'aprovado')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Comment - Iniciando Desenvolvimento
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: ${{ github.event.issue.number }},
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '✅ **Aprovação recebida!**\n\n👨‍💻 Agente Executor iniciando desenvolvimento...'
+            })
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Run Executor Agent
+        id: executor
+        run: |
+          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 claude-automation@${{ secrets.SERVER_HOST }} "source ~/crewai-env/bin/activate && cd ~/crewai-agents && python executor_agent.py '${{ github.event.issue.number }}' '${{ github.event.issue.title }}' 'Issue do GitHub'" > result.txt 2>&1 || true
+          cat result.txt
+          PR_URL=$(grep -o 'https://github.com/[^[:space:]]*pull/[0-9]*' result.txt | tail -1 || echo "")
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+
+      - name: Comment - Sucesso
+        if: steps.executor.outputs.pr_url != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: ${{ github.event.issue.number }},
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🎉 **Desenvolvimento concluído!**\n\n🔗 **Pull Request:** ${{ steps.executor.outputs.pr_url }}\n\n📝 Revise o código e faça merge quando estiver pronto.\n\n---\n_Deploy automático após o merge._'
+            })
+
+      - name: Update Label
+        if: steps.executor.outputs.pr_url != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            try {
+              await github.rest.issues.removeLabel({
+                issue_number: ${{ github.event.issue.number }},
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'aguardando-aprovacao'
+              })
+            } catch (e) {}
+            
             await github.rest.issues.addLabels({
               issue_number: ${{ github.event.issue.number }},
               owner: context.repo.owner,
               repo: context.repo.repo,
               labels: ['em-review']
+            })
+
+      - name: Comment - Erro
+        if: failure() || steps.executor.outputs.pr_url == ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: ${{ github.event.issue.number }},
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '❌ **Erro no desenvolvimento**\n\nVerifique os logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}'
             })
