@@ -4,7 +4,6 @@ import { TransactionService } from '../services/transactionService';
 import { authenticateToken } from '../middleware/auth';
 import { convertDecimalToNumber } from '../utils/decimal';
 import { ForbiddenError } from '../errors/forbidden-error';
-import { parseDateToBrazilTimezone } from '../utils/date';
 
 const router = Router();
 
@@ -12,8 +11,8 @@ const router = Router();
 const createTransactionSchema = z.object({
   type: z.enum(['INCOME', 'EXPENSE']),
   amount: z.number().positive('Amount must be positive'),
-  date: z.string().transform(str => parseDateToBrazilTimezone(str)),
-  purchaseDate: z.string().transform(str => parseDateToBrazilTimezone(str)).optional(),
+  date: z.string().transform(str => new Date(str)),
+  purchaseDate: z.string().transform(str => new Date(str)).optional(),
   description: z.string().min(1, 'Description is required'),
   notes: z.string().optional(),
   accountId: z.string().min(1, 'Account ID is required'),
@@ -27,8 +26,8 @@ const createTransactionSchema = z.object({
 const createInstallmentSchema = z.object({
   type: z.enum(['INCOME', 'EXPENSE']),
   amount: z.number().positive('Amount must be positive'),
-  date: z.string().transform(str => parseDateToBrazilTimezone(str)),
-  purchaseDate: z.string().transform(str => parseDateToBrazilTimezone(str)).optional(),
+  date: z.string().transform(str => new Date(str)),
+  purchaseDate: z.string().transform(str => new Date(str)).optional(),
   description: z.string().min(1, 'Description is required'),
   notes: z.string().optional(),
   accountId: z.string().min(1, 'Account ID is required'),
@@ -41,7 +40,7 @@ const createInstallmentSchema = z.object({
 const createRecurringSchema = z.object({
   type: z.enum(['INCOME', 'EXPENSE']),
   amount: z.number().positive('Amount must be positive'),
-  date: z.string().transform(str => parseDateToBrazilTimezone(str)),
+  date: z.string().transform(str => new Date(str)),
   description: z.string().min(1, 'Description is required'),
   notes: z.string().optional(),
   accountId: z.string().min(1, 'Account ID is required'),
@@ -49,7 +48,7 @@ const createRecurringSchema = z.object({
   creditCardId: z.string().optional(),
   interval: z.enum(['DAY', 'WEEK', 'MONTH', 'YEAR']),
   intervalCount: z.number().min(1).max(30, 'Interval count must be between 1 and 30'),
-  endDate: z.string().transform(str => parseDateToBrazilTimezone(str)).optional(),
+  endDate: z.string().transform(str => new Date(str)).optional(),
   isRecurringCharge: z.boolean().optional()
 });
 
