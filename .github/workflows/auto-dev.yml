@@ -22,7 +22,7 @@ jobs:
 
       - name: Run Planner
         run: |
-          ssh -o StrictHostKeyChecking=no claude-automation@${{ secrets.SERVER_HOST }} "source ~/crewai-env/bin/activate && cd ~/crewai-agents && nohup python planner_robust.py '${{ github.event.issue.number }}' '${{ github.event.issue.title }}' '${{ github.event.issue.body }}' > ~/logs/planner_${{ github.event.issue.number }}.log 2>&1 &"
+          ssh -o StrictHostKeyChecking=no claude-automation@${{ secrets.SERVER_HOST }} "source ~/crewai-env/bin/activate && cd ~/agents && nohup python planner.py '${{ github.repository }}' '${{ github.event.issue.number }}' '${{ github.event.issue.title }}' '${{ github.event.issue.body }}' > ~/logs/backend/planner_${{ github.event.issue.number }}.log 2>&1 &"
 
   executor:
     if: |
@@ -42,4 +42,4 @@ jobs:
 
       - name: Run Executor
         run: |
-          ssh -o StrictHostKeyChecking=no claude-automation@${{ secrets.SERVER_HOST }} "source ~/crewai-env/bin/activate && cd ~/crewai-agents && nohup python executor_robust.py '${{ github.event.issue.number }}' '${{ github.event.issue.title }}' '${{ github.event.issue.body }}' > ~/logs/executor_${{ github.event.issue.number }}.log 2>&1 &"
+          ssh -o StrictHostKeyChecking=no claude-automation@${{ secrets.SERVER_HOST }} "source ~/crewai-env/bin/activate && cd ~/agents && nohup python executor.py '${{ github.repository }}' '${{ github.event.issue.number }}' '${{ github.event.issue.title }}' '${{ github.event.issue.body }}' > ~/logs/backend/executor_${{ github.event.issue.number }}.log 2>&1 &"
