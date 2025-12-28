@@ -76,4 +76,33 @@ describe('Users API', () => {
       expect(response.body.users[1].email).toBe('test@test.com')
     })
   })
+
+  describe('GET /api/users/:id', () => {
+    it('should return a user by ID', async () => {
+      const response = await request(app)
+        .get(`/api/users/${userId}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .set('user-id', userId)
+        .expect(200)
+
+      expect(response.body.user).toHaveProperty('id', userId)
+      expect(response.body.user).toHaveProperty('name')
+      expect(response.body.user).toHaveProperty('email')
+      expect(response.body.user).toHaveProperty('createdAt')
+      expect(response.body.user).toHaveProperty('updatedAt')
+      expect(response.body.user).not.toHaveProperty('password')
+    })
+
+    it('should return 404 when user not found', async () => {
+      const nonExistentId = 'non-existent-id'
+
+      const response = await request(app)
+        .get(`/api/users/${nonExistentId}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .set('user-id', userId)
+        .expect(404)
+
+      expect(response.body.error).toBe('User not found')
+    })
+  })
 })
