@@ -15,6 +15,7 @@ import recurringRoutes from './routes/recurring';
 import budgetRoutes from './routes/budgets';
 import goalRoutes from './routes/goals';
 import reminderRoutes from './routes/reminders';
+import userRoutes from './routes/users';
 
 dotenv.config();
 
@@ -37,6 +38,7 @@ app.use('/api/recurring', recurringRoutes);
 app.use('/api/budgets', budgetRoutes);
 app.use('/api/goals', goalRoutes);
 app.use('/api/reminders', reminderRoutes);
+app.use('/api/users', userRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
