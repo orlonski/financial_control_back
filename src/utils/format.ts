@@ -15,6 +15,9 @@ export function formatDate(value: Date | string | null | undefined): string {
   }
 
   return date.toLocaleDateString('pt-BR');
+}
+
+/**
  * Formats a number as Brazilian Real currency (R$ 1.234,56)
  * @param value - The number to format (accepts null/undefined)
  * @returns Formatted currency string

@@ -25,6 +25,9 @@ describe('formatDate', () => {
   it('should return empty string for invalid date string', () => {
     expect(formatDate('abc')).toBe('')
     expect(formatDate('invalid-date')).toBe('')
+  })
+})
+
 import { formatCurrency } from '../../src/utils/format'
 
 describe('formatCurrency', () => {
