@@ -105,4 +105,59 @@ describe('Users API', () => {
       expect(response.body.error).toBe('User not found')
     })
   })
+
+  describe('PUT /api/users/:id', () => {
+    it('should update a user by ID', async () => {
+      const response = await request(app)
+        .put(`/api/users/${userId}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .set('user-id', userId)
+        .send({ name: 'Updated Name', email: 'updated@test.com' })
+        .expect(200)
+
+      expect(response.body.user).toHaveProperty('id', userId)
+      expect(response.body.user).toHaveProperty('name', 'Updated Name')
+      expect(response.body.user).toHaveProperty('email', 'updated@test.com')
+      expect(response.body.user).toHaveProperty('createdAt')
+      expect(response.body.user).toHaveProperty('updatedAt')
+      expect(response.body.user).not.toHaveProperty('password')
+    })
+
+    it('should update only name when email is not provided', async () => {
+      const response = await request(app)
+        .put(`/api/users/${userId}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .set('user-id', userId)
+        .send({ name: 'Only Name Updated' })
+        .expect(200)
+
+      expect(response.body.user).toHaveProperty('name', 'Only Name Updated')
+      expect(response.body.user).toHaveProperty('email', 'test@test.com')
+    })
+
+    it('should update only email when name is not provided', async () => {
+      const response = await request(app)
+        .put(`/api/users/${userId}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .set('user-id', userId)
+        .send({ email: 'onlyemail@test.com' })
+        .expect(200)
+
+      expect(response.body.user).toHaveProperty('email', 'onlyemail@test.com')
+      expect(response.body.user).toHaveProperty('name', 'Test User')
+    })
+
+    it('should return 404 when user not found', async () => {
+      const nonExistentId = 'non-existent-id'
+
+      const response = await request(app)
+        .put(`/api/users/${nonExistentId}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .set('user-id', userId)
+        .send({ name: 'Updated Name', email: 'updated@test.com' })
+        .expect(404)
+
+      expect(response.body.error).toBe('User not found')
+    })
+  })
 })

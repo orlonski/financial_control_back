@@ -52,4 +52,36 @@ router.get('/:id', authenticateToken, async (req: any, res) => {
   }
 });
 
+// Update user by ID
+router.put('/:id', authenticateToken, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const { name, email } = req.body;
+
+    const existingUser = await prisma.user.findUnique({
+      where: { id }
+    });
+
+    if (!existingUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const user = await prisma.user.update({
+      where: { id },
+      data: { name, email },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
+
+    res.json({ user });
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;
