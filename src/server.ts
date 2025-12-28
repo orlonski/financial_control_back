@@ -43,6 +43,12 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
+// Version
+app.get('/api/version', (req, res) => {
+  const packageJson = require('../package.json');
+  res.json({ version: packageJson.version });
+});
+
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
