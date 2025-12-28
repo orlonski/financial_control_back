@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authenticateToken } from '../middleware/auth';
 import { prisma } from '../server';
 import { convertDecimalToNumber } from '../utils/decimal';
+import { parseDateToBrazilTimezone } from '../utils/date';
 
 const router = Router();
 
@@ -13,8 +14,8 @@ const createRecurringSchema = z.object({
   description: z.string().min(1, 'Description is required'),
   interval: z.enum(['DAY', 'WEEK', 'MONTH', 'YEAR']),
   intervalCount: z.number().min(1).max(30, 'Interval count must be between 1 and 30'),
-  startDate: z.string().transform(str => new Date(str)),
-  endDate: z.string().transform(str => new Date(str)).optional(),
+  startDate: z.string().transform(str => parseDateToBrazilTimezone(str)),
+  endDate: z.string().transform(str => parseDateToBrazilTimezone(str)).optional(),
   accountId: z.string().min(1, 'Account ID is required'),
   categoryId: z.string().min(1, 'Category ID is required'),
   creditCardId: z.string().optional(),

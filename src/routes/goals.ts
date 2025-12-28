@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authenticateToken } from '../middleware/auth';
 import { prisma } from '../server';
 import { convertDecimalToNumber } from '../utils/decimal';
+import { parseDateToBrazilTimezone } from '../utils/date';
 
 const router = Router();
 
@@ -10,7 +11,7 @@ const router = Router();
 const createGoalSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   targetAmount: z.number().positive('Target amount must be positive'),
-  deadline: z.string().transform(str => new Date(str)),
+  deadline: z.string().transform(str => parseDateToBrazilTimezone(str)),
   accountId: z.string().optional(),
   color: z.string().optional(),
   icon: z.string().optional(),
@@ -20,7 +21,7 @@ const updateGoalSchema = createGoalSchema.partial();
 
 const createContributionSchema = z.object({
   amount: z.number().positive('Amount must be positive'),
-  date: z.string().transform(str => new Date(str)),
+  date: z.string().transform(str => parseDateToBrazilTimezone(str)),
   notes: z.string().optional(),
 });
 
