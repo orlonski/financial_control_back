@@ -3,27 +3,14 @@ name: Auto Dev - Claude Code
 on:
   issues:
     types: [labeled]
-  issue_comment:
-    types: [created]
 
 jobs:
-  planner:
+  start-automation:
     if: github.event.label.name == 'auto-dev'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     
     steps:
-      - name: Comment - Iniciando Análise
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: ${{ github.event.issue.number }},
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: '🚀 **Automação iniciada!**\n\n📋 Agente Planejador analisando a tarefa...'
-            })
-
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
@@ -31,24 +18,10 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Run Planner Agent
-        id: planner
+      - name: Start Background Executor
         run: |
-          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 claude-automation@${{ secrets.SERVER_HOST }} "source ~/crewai-env/bin/activate && cd ~/crewai-agents && python planner_agent.py '${{ github.event.issue.number }}' '${{ github.event.issue.title }}' 'Issue do GitHub'" > plan.txt 2>&1 || true
-          cat plan.txt
-
-      - name: Comment - Plano
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const plan = fs.readFileSync('plan.txt', 'utf8');
-            github.rest.issues.createComment({
-              issue_number: ${{ github.event.issue.number }},
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: '🤖 **Agente Planejador concluiu a análise:**\n\n```\n' + plan + '\n```\n\n---\n⏳ **Aguardando aprovação.** Comente **"aprovado"** para iniciar o desenvolvimento.'
-            })
+          ssh -o StrictHostKeyChecking=no claude-automation@${{ secrets.SERVER_HOST }} "source ~/crewai-env/bin/activate && cd ~/crewai-agents && nohup python robust_executor.py '${{ github.event.issue.number }}' '${{ github.event.issue.title }}' '${{ github.event.issue.body }}' > ~/logs/issue_${{ github.event.issue.number }}.log 2>&1 &"
+          echo "Executor iniciado em background"
 
       - name: Update Label
         uses: actions/github-script@v7
@@ -66,86 +39,5 @@ jobs:
               issue_number: ${{ github.event.issue.number }},
               owner: context.repo.owner,
               repo: context.repo.repo,
-              labels: ['aguardando-aprovacao']
-            })
-
-  executor:
-    if: |
-      github.event_name == 'issue_comment' &&
-      contains(github.event.issue.labels.*.name, 'aguardando-aprovacao') &&
-      contains(github.event.comment.body, 'aprovado')
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    
-    steps:
-      - name: Comment - Iniciando Desenvolvimento
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: ${{ github.event.issue.number }},
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: '✅ **Aprovação recebida!**\n\n👨‍💻 Agente Executor iniciando desenvolvimento...'
-            })
-
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
-
-      - name: Run Executor Agent
-        id: executor
-        run: |
-          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 claude-automation@${{ secrets.SERVER_HOST }} "source ~/crewai-env/bin/activate && cd ~/crewai-agents && python executor_agent.py '${{ github.event.issue.number }}' '${{ github.event.issue.title }}' 'Issue do GitHub'" > result.txt 2>&1 || true
-          cat result.txt
-          PR_URL=$(grep -o 'https://github.com/[^[:space:]]*pull/[0-9]*' result.txt | tail -1 || echo "")
-          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
-
-      - name: Comment - Sucesso
-        if: steps.executor.outputs.pr_url != ''
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const result = fs.readFileSync('result.txt', 'utf8');
-            github.rest.issues.createComment({
-              issue_number: ${{ github.event.issue.number }},
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: '🎉 **Desenvolvimento concluído!**\n\n🔗 **Pull Request:** ${{ steps.executor.outputs.pr_url }}\n\n---\n_Deploy automático após o merge._'
-            })
-
-      - name: Update Label
-        if: steps.executor.outputs.pr_url != ''
-        uses: actions/github-script@v7
-        with:
-          script: |
-            try {
-              await github.rest.issues.removeLabel({
-                issue_number: ${{ github.event.issue.number }},
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                name: 'aguardando-aprovacao'
-              })
-            } catch (e) {}
-            await github.rest.issues.addLabels({
-              issue_number: ${{ github.event.issue.number }},
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              labels: ['em-review']
-            })
-
-      - name: Comment - Erro
-        if: failure() || steps.executor.outputs.pr_url == ''
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: ${{ github.event.issue.number }},
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: '❌ **Erro no desenvolvimento**\n\nVerifique os logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+              labels: ['em-execucao']
             })
