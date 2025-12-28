@@ -507,4 +507,82 @@ describe('TransactionService', () => {
       expect(result.lastTransaction).toEqual(new Date('2024-01-15'))
     })
   })
+
+  describe('deleteTransaction', () => {
+    let transactionId: string
+
+    beforeEach(async () => {
+      const transaction = await prisma.transaction.create({
+        data: {
+          type: 'EXPENSE',
+          amount: 100,
+          date: new Date('2024-01-15'),
+          description: 'Transaction to Delete',
+          accountId,
+          categoryId,
+          userId
+        }
+      })
+      transactionId = transaction.id
+    })
+
+    it('should delete transaction successfully', async () => {
+      const result = await TransactionService.deleteTransaction(transactionId, userId)
+
+      expect(result).toEqual({ success: true })
+
+      const deletedTransaction = await prisma.transaction.findUnique({
+        where: { id: transactionId }
+      })
+      expect(deletedTransaction).toBeNull()
+    })
+
+    it('should throw NOT_FOUND error when transaction does not exist', async () => {
+      await expect(
+        TransactionService.deleteTransaction('non-existent-id', userId)
+      ).rejects.toThrow('NOT_FOUND')
+    })
+
+    it('should throw FORBIDDEN error when transaction belongs to another user', async () => {
+      const otherUser = await createTestUser('other@test.com')
+
+      await expect(
+        TransactionService.deleteTransaction(transactionId, otherUser.id)
+      ).rejects.toThrow('FORBIDDEN')
+
+      // Verify the transaction still exists
+      const transaction = await prisma.transaction.findUnique({
+        where: { id: transactionId }
+      })
+      expect(transaction).not.toBeNull()
+    })
+
+    it('should not delete transaction from another user', async () => {
+      const otherUser = await createTestUser('other@test.com')
+      const otherAccount = await createTestAccount(otherUser.id)
+      const otherCategory = await createTestCategory(otherUser.id)
+
+      const otherTransaction = await prisma.transaction.create({
+        data: {
+          type: 'INCOME',
+          amount: 500,
+          date: new Date('2024-02-20'),
+          description: 'Other User Transaction',
+          accountId: otherAccount.id,
+          categoryId: otherCategory.id,
+          userId: otherUser.id
+        }
+      })
+
+      await expect(
+        TransactionService.deleteTransaction(otherTransaction.id, userId)
+      ).rejects.toThrow('FORBIDDEN')
+
+      // Verify the other user's transaction still exists
+      const transaction = await prisma.transaction.findUnique({
+        where: { id: otherTransaction.id }
+      })
+      expect(transaction).not.toBeNull()
+    })
+  })
 })

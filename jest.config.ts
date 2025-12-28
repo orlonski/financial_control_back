@@ -12,17 +12,20 @@ const config: Config = {
   transform: {
     '^.+\\.ts$': ['ts-jest', {
       tsconfig: {
+        rootDir: '.',
         module: 'commonjs',
         target: 'ES2020',
+        strict: true,
         esModuleInterop: true,
         skipLibCheck: true,
-        strict: true,
+        forceConsistentCasingInFileNames: true,
         resolveJsonModule: true,
         moduleResolution: 'node',
-        baseUrl: '.',
-        rootDir: '.'
       }
     }],
+  },
+  moduleNameMapper: {
+    '^(\\.{1,2}/.*)\\.js$': '$1',
   },
   collectCoverageFrom: [
     'src/**/*.ts',

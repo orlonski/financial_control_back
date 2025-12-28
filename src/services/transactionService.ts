@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { ForbiddenError } from '../errors/forbidden-error';
 
 const prisma = new PrismaClient();
 
@@ -296,12 +297,12 @@ export class TransactionService {
 
   /**
    * Get a single transaction by ID
+   * @throws ForbiddenError if transaction exists but belongs to another user
    */
   static async getTransactionById(transactionId: string, userId: string) {
-    const transaction = await prisma.transaction.findFirst({
+    const transaction = await prisma.transaction.findUnique({
       where: {
-        id: transactionId,
-        userId
+        id: transactionId
       },
       include: {
         account: {
@@ -328,6 +329,14 @@ export class TransactionService {
         }
       }
     });
+
+    if (!transaction) {
+      return null;
+    }
+
+    if (transaction.userId !== userId) {
+      throw new ForbiddenError('Transaction does not belong to user');
+    }
 
     return transaction;
   }
@@ -489,20 +498,29 @@ export class TransactionService {
 
   /**
    * Delete transaction
+   * Returns: { success: true } on success
+   * Throws: Error with message 'NOT_FOUND' if transaction doesn't exist
+   * Throws: Error with message 'FORBIDDEN' if transaction belongs to another user
    */
   static async deleteTransaction(transactionId: string, userId: string) {
-    const transaction = await prisma.transaction.deleteMany({
-      where: {
-        id: transactionId,
-        userId
-      }
+    const transaction = await prisma.transaction.findUnique({
+      where: { id: transactionId },
+      select: { userId: true }
     });
 
-    if (transaction.count === 0) {
-      throw new Error('Transaction not found');
+    if (!transaction) {
+      throw new Error('NOT_FOUND');
     }
 
-    return true;
+    if (transaction.userId !== userId) {
+      throw new Error('FORBIDDEN');
+    }
+
+    await prisma.transaction.delete({
+      where: { id: transactionId }
+    });
+
+    return { success: true };
   }
 
   /**
