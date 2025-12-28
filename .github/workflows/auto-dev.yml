@@ -8,34 +8,10 @@ jobs:
   auto-dev:
     if: github.event.label.name == 'auto-dev'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     
     steps:
-      - name: Get Issue Info
-        id: issue
-        run: |
-          echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
-          echo "issue_title=${{ github.event.issue.title }}" >> $GITHUB_OUTPUT
-          
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
-          
-      - name: Run Claude Code Automation
-        run: |
-          ssh -o StrictHostKeyChecking=no claude-automation@${{ secrets.SERVER_HOST }} << 'ENDSSH'
-            cd ~
-            export HOME=/home/claude-automation
-            
-            ~/scripts/dev-automation.sh \
-              "${{ github.event.issue.number }}" \
-              "${{ github.event.issue.title }}" \
-              "Issue do GitHub"
-          ENDSSH
-          
-      - name: Comment on Issue
+      - name: Comment - Iniciando
         uses: actions/github-script@v7
         with:
           script: |
@@ -43,5 +19,107 @@ jobs:
               issue_number: ${{ github.event.issue.number }},
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '🤖 **Automação iniciada!**\n\nO Claude Code está desenvolvendo esta tarefa. Um PR será criado em breve.'
+              body: '🚀 **Automação iniciada!**\n\n⏳ Conectando no servidor...'
+            })
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Comment - Claude Trabalhando
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: ${{ github.event.issue.number }},
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🤖 **Claude Code trabalhando...**\n\n```\nLendo o projeto...\nAnalisando a tarefa...\nDesenvolvendo solução...\n```\n\n⏳ Isso pode levar alguns minutos.'
+            })
+          
+      - name: Run Claude Code Automation
+        id: automation
+        run: |
+          ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ServerAliveCountMax=10 claude-automation@${{ secrets.SERVER_HOST }} "nohup /home/claude-automation/scripts/dev-automation.sh '${{ github.event.issue.number }}' '${{ github.event.issue.title }}' 'Issue do GitHub' > /home/claude-automation/logs/action_${{ github.event.issue.number }}.log 2>&1 &"
+          sleep 10
+          
+      - name: Wait for completion
+        id: wait
+        run: |
+          for i in {1..60}; do
+            echo "Verificando status... tentativa $i"
+            RESULT=$(ssh -o StrictHostKeyChecking=no claude-automation@${{ secrets.SERVER_HOST }} "cat /home/claude-automation/logs/action_${{ github.event.issue.number }}.log 2>/dev/null | tail -20 || echo 'aguardando'")
+            echo "$RESULT"
+            
+            if echo "$RESULT" | grep -q "Concluído!"; then
+              echo "Automação concluída!"
+              
+              # Extrair URL do PR
+              PR_URL=$(echo "$RESULT" | grep -o 'https://github.com/[^[:space:]]*pull/[0-9]*' | tail -1)
+              echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
+              echo "status=success" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            
+            if echo "$RESULT" | grep -q "error\|Error\|ERRO"; then
+              echo "status=error" >> $GITHUB_OUTPUT
+              echo "error_msg=$RESULT" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+            
+            sleep 10
+          done
+          echo "status=timeout" >> $GITHUB_OUTPUT
+          exit 1
+
+      - name: Comment - Sucesso
+        if: steps.wait.outputs.status == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: ${{ github.event.issue.number }},
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '✅ **Desenvolvimento concluído!**\n\n🔗 **Pull Request:** ${{ steps.wait.outputs.pr_url }}\n\n📝 Revise o código e faça o merge quando estiver pronto.\n\n---\n_O deploy será automático após o merge._'
+            })
+            
+      - name: Comment - Erro
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: ${{ github.event.issue.number }},
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '❌ **Erro na automação**\n\nAlgo deu errado durante o desenvolvimento.\n\n🔍 Verifique os logs em: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\n---\n_Você pode tentar novamente removendo e adicionando a label `auto-dev`._'
+            })
+
+      - name: Update Labels
+        if: steps.wait.outputs.status == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Remove auto-dev label
+            try {
+              await github.rest.issues.removeLabel({
+                issue_number: ${{ github.event.issue.number }},
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'auto-dev'
+              })
+            } catch (e) {
+              console.log('Label auto-dev não encontrada')
+            }
+            
+            // Add em-review label
+            await github.rest.issues.addLabels({
+              issue_number: ${{ github.event.issue.number }},
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['em-review']
             })
