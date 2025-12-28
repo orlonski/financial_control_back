@@ -81,7 +81,7 @@ jobs:
     if: |
       github.event_name == 'issue_comment' &&
       contains(github.event.issue.labels.*.name, 'aguardando-aprovacao') &&
-      contains(toLower(github.event.comment.body), 'aprovado')
+      contains(github.event.comment.body, 'aprovado')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     
