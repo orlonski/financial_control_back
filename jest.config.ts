@@ -3,13 +3,29 @@ import type { Config } from 'jest'
 const config: Config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
+  rootDir: '.',
   roots: ['<rootDir>/src', '<rootDir>/tests'],
   testMatch: [
     '**/__tests__/**/*.ts',
     '**/?(*.)+(spec|test).ts'
   ],
   transform: {
-    '^.+\\.ts$': 'ts-jest',
+    '^.+\\.ts$': ['ts-jest', {
+      tsconfig: {
+        rootDir: '.',
+        module: 'commonjs',
+        target: 'ES2020',
+        strict: true,
+        esModuleInterop: true,
+        skipLibCheck: true,
+        forceConsistentCasingInFileNames: true,
+        resolveJsonModule: true,
+        moduleResolution: 'node',
+      }
+    }],
+  },
+  moduleNameMapper: {
+    '^(\\.{1,2}/.*)\\.js$': '$1',
   },
   collectCoverageFrom: [
     'src/**/*.ts',
