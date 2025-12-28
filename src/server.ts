@@ -16,6 +16,7 @@ import budgetRoutes from './routes/budgets';
 import goalRoutes from './routes/goals';
 import reminderRoutes from './routes/reminders';
 import userRoutes from './routes/users';
+import summaryRoutes from './routes/summary';
 import statsRoutes from './routes/stats';
 
 dotenv.config();
@@ -40,6 +41,7 @@ app.use('/api/budgets', budgetRoutes);
 app.use('/api/goals', goalRoutes);
 app.use('/api/reminders', reminderRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/summary', summaryRoutes);
 app.use('/api/stats', statsRoutes);
 
 // Health check

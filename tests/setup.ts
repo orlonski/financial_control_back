@@ -1,14 +1,12 @@
 import { PrismaClient } from '@prisma/client'
 import { execSync } from 'child_process'
+import * as dotenv from 'dotenv'
+
+// Carregar variáveis de ambiente
+dotenv.config()
 
 // Mock do Prisma para testes
-const prisma = new PrismaClient({
-  datasources: {
-    db: {
-      url: process.env.DATABASE_URL || 'postgresql://test:test@localhost:5432/financial_control_test'
-    }
-  }
-})
+const prisma = new PrismaClient()
 
 // Setup global para testes
 beforeAll(async () => {

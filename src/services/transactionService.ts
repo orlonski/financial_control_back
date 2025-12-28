@@ -524,6 +524,58 @@ export class TransactionService {
   }
 
   /**
+   * Get financial summary using SQL aggregation for performance
+   * Returns totalIncome, totalExpense, balance, and transactionCount
+   */
+  static async getFinancialSummary(
+    userId: string,
+    filters: {
+      accountId?: string;
+      startDate?: Date;
+      endDate?: Date;
+    } = {}
+  ) {
+    const where: any = { userId };
+
+    if (filters.accountId) {
+      where.accountId = filters.accountId;
+    }
+
+    if (filters.startDate || filters.endDate) {
+      where.date = {};
+      if (filters.startDate) {
+        where.date.gte = filters.startDate;
+      }
+      if (filters.endDate) {
+        where.date.lte = filters.endDate;
+      }
+    }
+
+    // Use Prisma aggregation for better performance
+    const [incomeResult, expenseResult, countResult] = await Promise.all([
+      prisma.transaction.aggregate({
+        where: { ...where, type: 'INCOME' },
+        _sum: { amount: true }
+      }),
+      prisma.transaction.aggregate({
+        where: { ...where, type: 'EXPENSE' },
+        _sum: { amount: true }
+      }),
+      prisma.transaction.count({ where })
+    ]);
+
+    const totalIncome = Number(incomeResult._sum.amount || 0);
+    const totalExpense = Number(expenseResult._sum.amount || 0);
+
+    return {
+      totalIncome,
+      totalExpense,
+      balance: totalIncome - totalExpense,
+      transactionCount: countResult
+    };
+  }
+
+  /**
    * Get transaction count for a user
    */
   static async getTransactionCount(userId: string) {
