@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { TransactionService } from '../services/transactionService';
 import { authenticateToken } from '../middleware/auth';
 import { convertDecimalToNumber } from '../utils/decimal';
+import { ForbiddenError } from '../errors/forbidden-error';
 
 const router = Router();
 
@@ -107,6 +108,9 @@ router.get('/:id', authenticateToken, async (req: any, res) => {
 
     res.json(convertDecimalToNumber(transaction));
   } catch (error) {
+    if (error instanceof ForbiddenError) {
+      return res.status(403).json({ error: error.message });
+    }
     res.status(500).json({ error: 'Internal server error' });
   }
 });

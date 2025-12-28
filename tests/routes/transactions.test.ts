@@ -1,14 +1,14 @@
 import request from 'supertest'
 import express from 'express'
-import transactionsRoutes from '../src/routes/transactions'
-import { prisma, createTestUser, createTestAccount, createTestCategory, createTestCreditCard } from './setup'
+import transactionsRoutes from '../../src/routes/transactions'
+import { prisma, createTestUser, createTestAccount, createTestCategory, createTestCreditCard } from '../setup'
 
 const app = express()
 app.use(express.json())
 app.use('/api/transactions', transactionsRoutes)
 
 // Mock do middleware de autenticação
-jest.mock('../src/middleware/auth', () => ({
+jest.mock('../../src/middleware/auth', () => ({
   authenticateToken: (req: any, res: any, next: any) => {
     req.userId = req.headers['user-id'] || 'test-user-id'
     next()
@@ -308,6 +308,73 @@ describe('Transactions API', () => {
         .expect(200)
 
       expect(response.body.count).toBe(1)
+    })
+  })
+
+  describe('GET /api/transactions/:id', () => {
+    let transactionId: string
+
+    beforeEach(async () => {
+      const transaction = await prisma.transaction.create({
+        data: {
+          type: 'EXPENSE',
+          amount: 100,
+          date: new Date('2024-01-15'),
+          description: 'Test Transaction',
+          accountId,
+          categoryId,
+          userId
+        }
+      })
+      transactionId = transaction.id
+    })
+
+    it('should return transaction by ID', async () => {
+      const response = await request(app)
+        .get(`/api/transactions/${transactionId}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .set('user-id', userId)
+        .expect(200)
+
+      expect(response.body).toHaveProperty('id', transactionId)
+      expect(response.body).toHaveProperty('amount', 100)
+      expect(response.body).toHaveProperty('description', 'Test Transaction')
+    })
+
+    it('should return 404 for non-existent transaction', async () => {
+      const response = await request(app)
+        .get('/api/transactions/non-existent-id')
+        .set('Authorization', `Bearer ${authToken}`)
+        .set('user-id', userId)
+        .expect(404)
+
+      expect(response.body.error).toBe('Transaction not found')
+    })
+
+    it('should return 403 when transaction belongs to another user', async () => {
+      const otherUser = await createTestUser('other-user@test.com')
+      const otherAccount = await createTestAccount(otherUser.id)
+      const otherCategory = await createTestCategory(otherUser.id)
+
+      const otherTransaction = await prisma.transaction.create({
+        data: {
+          type: 'EXPENSE',
+          amount: 200,
+          date: new Date('2024-01-15'),
+          description: 'Other User Transaction',
+          accountId: otherAccount.id,
+          categoryId: otherCategory.id,
+          userId: otherUser.id
+        }
+      })
+
+      const response = await request(app)
+        .get(`/api/transactions/${otherTransaction.id}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .set('user-id', userId)
+        .expect(403)
+
+      expect(response.body.error).toBe('Transaction does not belong to user')
     })
   })
 
