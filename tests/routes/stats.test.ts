@@ -6,6 +6,7 @@ const mockPrisma = {
   user: {
     count: jest.fn(),
     findFirst: jest.fn(),
+    findMany: jest.fn(),
     create: jest.fn(),
     deleteMany: jest.fn()
   }
@@ -319,6 +320,222 @@ describe('Stats API', () => {
 
         const response = await request(app)
           .get('/api/stats')
+          .set('Authorization', 'Bearer valid-token')
+          .set('user-id', 'test-user-id')
+          .expect(200)
+
+        expect(response.headers['content-type']).toMatch(/application\/json/)
+      })
+    })
+  })
+
+  describe('GET /api/stats/transactions-per-user', () => {
+    describe('Cenários de sucesso', () => {
+      it('should return transaction count per user', async () => {
+        mockPrisma.user.findMany.mockResolvedValue([
+          {
+            id: 'user-1',
+            name: 'John Doe',
+            email: 'john@test.com',
+            _count: { transactions: 10 }
+          },
+          {
+            id: 'user-2',
+            name: 'Jane Doe',
+            email: 'jane@test.com',
+            _count: { transactions: 5 }
+          }
+        ])
+
+        const response = await request(app)
+          .get('/api/stats/transactions-per-user')
+          .set('Authorization', 'Bearer valid-token')
+          .set('user-id', 'test-user-id')
+          .expect(200)
+
+        expect(response.body.users).toHaveLength(2)
+        expect(response.body.users[0]).toEqual({
+          userId: 'user-1',
+          userName: 'John Doe',
+          userEmail: 'john@test.com',
+          transactionCount: 10
+        })
+        expect(response.body.users[1]).toEqual({
+          userId: 'user-2',
+          userName: 'Jane Doe',
+          userEmail: 'jane@test.com',
+          transactionCount: 5
+        })
+        expect(response.body.totalUsers).toBe(2)
+        expect(response.body.totalTransactions).toBe(15)
+      })
+
+      it('should return empty array when no users exist', async () => {
+        mockPrisma.user.findMany.mockResolvedValue([])
+
+        const response = await request(app)
+          .get('/api/stats/transactions-per-user')
+          .set('Authorization', 'Bearer valid-token')
+          .set('user-id', 'test-user-id')
+          .expect(200)
+
+        expect(response.body.users).toEqual([])
+        expect(response.body.totalUsers).toBe(0)
+        expect(response.body.totalTransactions).toBe(0)
+      })
+
+      it('should return user with zero transactions', async () => {
+        mockPrisma.user.findMany.mockResolvedValue([
+          {
+            id: 'user-1',
+            name: 'New User',
+            email: 'new@test.com',
+            _count: { transactions: 0 }
+          }
+        ])
+
+        const response = await request(app)
+          .get('/api/stats/transactions-per-user')
+          .set('Authorization', 'Bearer valid-token')
+          .set('user-id', 'test-user-id')
+          .expect(200)
+
+        expect(response.body.users).toHaveLength(1)
+        expect(response.body.users[0].transactionCount).toBe(0)
+        expect(response.body.totalTransactions).toBe(0)
+      })
+
+      it('should call prisma with correct parameters', async () => {
+        mockPrisma.user.findMany.mockResolvedValue([])
+
+        await request(app)
+          .get('/api/stats/transactions-per-user')
+          .set('Authorization', 'Bearer valid-token')
+          .set('user-id', 'test-user-id')
+          .expect(200)
+
+        expect(mockPrisma.user.findMany).toHaveBeenCalledWith({
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            _count: {
+              select: {
+                transactions: true
+              }
+            }
+          },
+          orderBy: {
+            name: 'asc'
+          }
+        })
+      })
+    })
+
+    describe('Cenários de autenticação (401/403)', () => {
+      it('should return 401 when no token is provided', async () => {
+        mockAuthMiddleware.mockImplementation((req: any, res: any, next: any) => {
+          res.status(401).json({ error: 'Access token required' })
+        })
+
+        const response = await request(app)
+          .get('/api/stats/transactions-per-user')
+          .expect(401)
+
+        expect(response.body.error).toBe('Access token required')
+      })
+
+      it('should return 403 when token is invalid', async () => {
+        mockAuthMiddleware.mockImplementation((req: any, res: any, next: any) => {
+          res.status(403).json({ error: 'Invalid token' })
+        })
+
+        const response = await request(app)
+          .get('/api/stats/transactions-per-user')
+          .set('Authorization', 'Bearer invalid-token')
+          .expect(403)
+
+        expect(response.body.error).toBe('Invalid token')
+      })
+    })
+
+    describe('Cenários de erro (500)', () => {
+      it('should return 500 when database error occurs', async () => {
+        mockPrisma.user.findMany.mockRejectedValue(new Error('Database connection failed'))
+
+        const response = await request(app)
+          .get('/api/stats/transactions-per-user')
+          .set('Authorization', 'Bearer valid-token')
+          .set('user-id', 'test-user-id')
+          .expect(500)
+
+        expect(response.body.error).toBe('Internal server error')
+      })
+
+      it('should not expose internal error details', async () => {
+        mockPrisma.user.findMany.mockRejectedValue(new Error('Sensitive database info'))
+
+        const response = await request(app)
+          .get('/api/stats/transactions-per-user')
+          .set('Authorization', 'Bearer valid-token')
+          .set('user-id', 'test-user-id')
+          .expect(500)
+
+        expect(response.body.error).toBe('Internal server error')
+        expect(JSON.stringify(response.body)).not.toContain('Sensitive')
+      })
+    })
+
+    describe('Edge cases', () => {
+      it('should handle large number of users', async () => {
+        const manyUsers = Array.from({ length: 100 }, (_, i) => ({
+          id: `user-${i}`,
+          name: `User ${i}`,
+          email: `user${i}@test.com`,
+          _count: { transactions: i * 10 }
+        }))
+        mockPrisma.user.findMany.mockResolvedValue(manyUsers)
+
+        const response = await request(app)
+          .get('/api/stats/transactions-per-user')
+          .set('Authorization', 'Bearer valid-token')
+          .set('user-id', 'test-user-id')
+          .expect(200)
+
+        expect(response.body.users).toHaveLength(100)
+        expect(response.body.totalUsers).toBe(100)
+        expect(response.body.totalTransactions).toBe(49500) // sum of 0+10+20+...+990
+      })
+
+      it('should return valid JSON structure', async () => {
+        mockPrisma.user.findMany.mockResolvedValue([
+          {
+            id: 'user-1',
+            name: 'Test User',
+            email: 'test@test.com',
+            _count: { transactions: 5 }
+          }
+        ])
+
+        const response = await request(app)
+          .get('/api/stats/transactions-per-user')
+          .set('Authorization', 'Bearer valid-token')
+          .set('user-id', 'test-user-id')
+          .expect(200)
+
+        expect(response.body).toHaveProperty('users')
+        expect(response.body).toHaveProperty('totalUsers')
+        expect(response.body).toHaveProperty('totalTransactions')
+        expect(Array.isArray(response.body.users)).toBe(true)
+        expect(typeof response.body.totalUsers).toBe('number')
+        expect(typeof response.body.totalTransactions).toBe('number')
+      })
+
+      it('should return content-type application/json', async () => {
+        mockPrisma.user.findMany.mockResolvedValue([])
+
+        const response = await request(app)
+          .get('/api/stats/transactions-per-user')
           .set('Authorization', 'Bearer valid-token')
           .set('user-id', 'test-user-id')
           .expect(200)
