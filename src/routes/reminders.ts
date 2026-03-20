@@ -371,18 +371,9 @@ router.get('/credit-cards/upcoming', authenticateToken, async (req: any, res) =>
       }
 
       // Calculate invoice start and end dates based on closing day
-      let invoiceStartDate: Date;
-      let invoiceEndDate: Date;
-
-      if (card.closingDay >= card.dueDay) {
-        // Closing is in the same month as due date
-        invoiceStartDate = new Date(dueDate.getFullYear(), dueDate.getMonth() - 1, card.closingDay + 1);
-        invoiceEndDate = new Date(dueDate.getFullYear(), dueDate.getMonth(), card.closingDay);
-      } else {
-        // Closing is in the previous month
-        invoiceStartDate = new Date(dueDate.getFullYear(), dueDate.getMonth() - 1, card.closingDay + 1);
-        invoiceEndDate = new Date(dueDate.getFullYear(), dueDate.getMonth(), card.closingDay);
-      }
+      // The invoice period is from (closingDay + 1) of previous month to closingDay of current month
+      const invoiceStartDate = new Date(dueDate.getFullYear(), dueDate.getMonth() - 1, card.closingDay + 1);
+      const invoiceEndDate = new Date(dueDate.getFullYear(), dueDate.getMonth(), card.closingDay);
 
       // Get total for current invoice
       const invoiceTotal = await prisma.transaction.aggregate({

@@ -99,9 +99,9 @@ export class TransactionService {
   static isToday(date: Date): boolean {
     const today = new Date();
     return (
-      date.getUTCFullYear() === today.getFullYear() &&
-      date.getUTCMonth() === today.getMonth() &&
-      date.getUTCDate() === today.getDate()
+      date.getUTCFullYear() === today.getUTCFullYear() &&
+      date.getUTCMonth() === today.getUTCMonth() &&
+      date.getUTCDate() === today.getUTCDate()
     );
   }
 
@@ -109,6 +109,33 @@ export class TransactionService {
    * Create a single transaction
    */
   static async createTransaction(data: CreateTransactionData) {
+    // Validate ownership of all related resources
+    const [account, category] = await Promise.all([
+      prisma.account.findFirst({
+        where: { id: data.accountId, userId: data.userId }
+      }),
+      prisma.category.findFirst({
+        where: { id: data.categoryId, userId: data.userId }
+      })
+    ]);
+
+    if (!account) {
+      throw new ForbiddenError('Account not found or does not belong to user');
+    }
+
+    if (!category) {
+      throw new ForbiddenError('Category not found or does not belong to user');
+    }
+
+    if (data.creditCardId) {
+      const creditCard = await prisma.creditCard.findFirst({
+        where: { id: data.creditCardId, userId: data.userId }
+      });
+      if (!creditCard) {
+        throw new ForbiddenError('Credit card not found or does not belong to user');
+      }
+    }
+
     // Normalize dates to avoid timezone issues
     let transactionDate = this.normalizeDate(data.date);
     let purchaseDate = data.purchaseDate ? this.normalizeDate(data.purchaseDate) : undefined;
@@ -217,9 +244,13 @@ export class TransactionService {
       const newYear = originalYear + Math.floor(totalMonths / 12);
       const newMonth = totalMonths % 12;
 
+      // Handle month-end dates properly (e.g., Jan 31 -> Feb 28/29, Mar 31 -> Apr 30)
+      const lastDayOfNewMonth = new Date(Date.UTC(newYear, newMonth + 1, 0, 3, 0, 0, 0)).getUTCDate();
+      const dayForNewMonth = Math.min(originalDay, lastDayOfNewMonth);
+
       // Create date properly: Year, Month (0-based), Day
-      // This way we preserve the original day (01, 15, 31, etc)
-      const installmentDate = new Date(Date.UTC(newYear, newMonth, originalDay, 3, 0, 0, 0));
+      // This way we preserve the original day (01, 15, 31, etc) but cap at month's last day
+      const installmentDate = new Date(Date.UTC(newYear, newMonth, dayForNewMonth, 3, 0, 0, 0));
 
       // Calculate transaction date based on whether it's a credit card or not
       let transactionDate = installmentDate;

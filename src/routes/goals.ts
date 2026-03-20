@@ -37,8 +37,11 @@ function calculateProgress(currentAmount: number, targetAmount: number, deadline
   const monthsLeft = Math.max(1, Math.ceil(daysLeft / 30));
   const monthlyNeeded = remaining / monthsLeft;
 
-  // Check if on track (has enough time to reach goal at current pace)
-  const isOnTrack = percentage >= 100 || (remaining <= 0) || (monthlyNeeded * monthsLeft >= remaining);
+  // Check if on track:
+  // - Goal is completed (100% or more)
+  // - OR deadline hasn't passed and we have time to reach the goal
+  // If deadline passed and not complete, NOT on track
+  const isOnTrack = percentage >= 100 || (remaining <= 0) || (daysLeft > 0 && monthlyNeeded > 0);
 
   return {
     percentage: Math.min(100, percentage),
@@ -293,38 +296,42 @@ router.post('/:id/contributions', authenticateToken, async (req: any, res) => {
     }
 
     // Create contribution and update goal amount in a transaction
-    const [contribution, updatedGoal] = await prisma.$transaction([
-      prisma.goalContribution.create({
+    // Also check and update status within the same transaction to prevent race conditions
+    const contribution = await prisma.$transaction(async (tx) => {
+      const newContribution = await tx.goalContribution.create({
         data: {
           amount: data.amount,
           date: data.date,
           notes: data.notes,
           goalId: req.params.id,
         },
-      }),
-      prisma.goal.update({
+      });
+
+      const goal = await tx.goal.update({
         where: { id: req.params.id },
         data: {
           currentAmount: {
             increment: data.amount,
           },
         },
-      }),
-    ]);
-
-    // Check if goal is now completed
-    const newCurrentAmount = Number(updatedGoal.currentAmount);
-    const targetAmount = Number(updatedGoal.targetAmount);
-
-    if (newCurrentAmount >= targetAmount && updatedGoal.status === 'ACTIVE') {
-      await prisma.goal.update({
-        where: { id: req.params.id },
-        data: {
-          status: 'COMPLETED',
-          completedAt: new Date(),
-        },
       });
-    }
+
+      // Check if goal is now completed within the same transaction
+      const newCurrentAmount = Number(goal.currentAmount);
+      const targetAmount = Number(goal.targetAmount);
+
+      if (newCurrentAmount >= targetAmount && goal.status === 'ACTIVE') {
+        await tx.goal.update({
+          where: { id: req.params.id },
+          data: {
+            status: 'COMPLETED',
+            completedAt: new Date(),
+          },
+        });
+      }
+
+      return newContribution;
+    });
 
     res.status(201).json(convertDecimalToNumber(contribution));
   } catch (error) {

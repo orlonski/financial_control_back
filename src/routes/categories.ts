@@ -59,6 +59,17 @@ router.post('/', authenticateToken, async (req: any, res) => {
   try {
     const data = createCategorySchema.parse(req.body);
 
+    const existingCategory = await prisma.category.findFirst({
+      where: {
+        userId: req.userId,
+        name: data.name
+      }
+    });
+
+    if (existingCategory) {
+      return res.status(400).json({ error: 'Category with this name already exists' });
+    }
+
     const category = await prisma.category.create({
       data: {
         ...data,
@@ -90,6 +101,37 @@ router.put('/:id', authenticateToken, async (req: any, res) => {
 
     if (!existingCategory) {
       return res.status(404).json({ error: 'Category not found' });
+    }
+
+    // Check for duplicate name if name is being updated
+    if (data.name && data.name !== existingCategory.name) {
+      const duplicateCategory = await prisma.category.findFirst({
+        where: {
+          userId: req.userId,
+          name: data.name,
+          id: { not: req.params.id }
+        }
+      });
+
+      if (duplicateCategory) {
+        return res.status(400).json({ error: 'Category with this name already exists' });
+      }
+    }
+
+    // Block type change if there are existing transactions
+    if (data.type && data.type !== existingCategory.type) {
+      const transactionCount = await prisma.transaction.count({
+        where: {
+          categoryId: req.params.id,
+          userId: req.userId
+        }
+      });
+
+      if (transactionCount > 0) {
+        return res.status(400).json({
+          error: `Cannot change category type while ${transactionCount} transaction(s) exist. Delete or reassign transactions first.`
+        });
+      }
     }
 
     // Update and return in single query

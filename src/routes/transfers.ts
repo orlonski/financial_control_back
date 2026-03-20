@@ -162,22 +162,19 @@ router.put('/:id', authenticateToken, async (req: any, res) => {
     }
 
     // If updating accounts, verify they belong to user
-    if (data.fromAccountId || data.toAccountId) {
-      const accountIds = [
-        data.fromAccountId,
-        data.toAccountId
-      ].filter((id): id is string => Boolean(id));
+    // Always validate both accounts (use existing values if not updating)
+    const fromAccountId = data.fromAccountId || existingTransfer.fromAccountId;
+    const toAccountId = data.toAccountId || existingTransfer.toAccountId;
 
-      const accounts = await prisma.account.findMany({
-        where: {
-          id: { in: accountIds },
-          userId: req.userId
-        }
-      });
-
-      if (accounts.length !== accountIds.length) {
-        return res.status(404).json({ error: 'One or more accounts not found' });
+    const accounts = await prisma.account.findMany({
+      where: {
+        id: { in: [fromAccountId, toAccountId] },
+        userId: req.userId
       }
+    });
+
+    if (accounts.length !== 2) {
+      return res.status(404).json({ error: 'One or both accounts not found or do not belong to user' });
     }
 
     // Update and return in single query

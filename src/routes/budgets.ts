@@ -238,7 +238,7 @@ router.delete('/:id', authenticateToken, async (req: any, res) => {
 router.get('/history/:categoryId', authenticateToken, async (req: any, res) => {
   try {
     const { months = '6' } = req.query;
-    const monthsCount = parseInt(months);
+    const monthsCount = Math.min(Math.max(parseInt(months) || 6, 1), 36);
 
     const today = new Date();
     const history = [];

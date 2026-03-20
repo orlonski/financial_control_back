@@ -339,74 +339,78 @@ router.post('/generate', authenticateToken, async (req: any, res) => {
       },
     });
 
-    const generatedTransactions = [];
+    const generatedTransactions = await prisma.$transaction(async (tx) => {
+      const results: any[] = [];
 
-    for (const recurrence of activeRecurrences) {
-      if (!recurrence.amount || !recurrence.accountId || !recurrence.categoryId) {
-        continue;
-      }
+      for (const recurrence of activeRecurrences) {
+        if (!recurrence.amount || !recurrence.accountId || !recurrence.categoryId) {
+          continue;
+        }
 
-      // Calcular data efetiva de fim
-      const effectiveEndDate = recurrence.endDate && recurrence.endDate < maxFutureDate
-        ? recurrence.endDate
-        : maxFutureDate;
+        // Calcular data efetiva de fim
+        const effectiveEndDate = recurrence.endDate && recurrence.endDate < maxFutureDate
+          ? recurrence.endDate
+          : maxFutureDate;
 
-      // Gerar transações do nextDueDate até effectiveEndDate
-      const transactionDates: Date[] = [];
-      let currentDate = recurrence.nextDueDate ? new Date(recurrence.nextDueDate) : new Date(recurrence.startDate);
+        // Gerar transações do nextDueDate até effectiveEndDate
+        const transactionDates: Date[] = [];
+        let currentDate = recurrence.nextDueDate ? new Date(recurrence.nextDueDate) : new Date(recurrence.startDate);
 
-      while (currentDate <= effectiveEndDate) {
-        transactionDates.push(new Date(currentDate));
-        currentDate = calculateNextDueDate(
-          recurrence.startDate,
-          recurrence.interval,
-          recurrence.intervalCount,
-          currentDate
-        );
-      }
+        while (currentDate <= effectiveEndDate) {
+          transactionDates.push(new Date(currentDate));
+          currentDate = calculateNextDueDate(
+            recurrence.startDate,
+            recurrence.interval,
+            recurrence.intervalCount,
+            currentDate
+          );
+        }
 
-      // Criar transações
-      const transactionType = recurrence.type === 'INCOME' ? 'INCOME' : 'EXPENSE';
+        // Criar transações
+        const transactionType = recurrence.type === 'INCOME' ? 'INCOME' : 'EXPENSE';
 
-      for (const date of transactionDates) {
-        // Verificar se já existe transação para essa data
-        const existingTransaction = await prisma.transaction.findFirst({
-          where: {
-            recurrenceId: recurrence.id,
-            date: {
-              gte: new Date(date.getFullYear(), date.getMonth(), date.getDate()),
-              lt: new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1),
-            },
-          },
-        });
-
-        if (!existingTransaction) {
-          const transaction = await prisma.transaction.create({
-            data: {
-              type: transactionType,
-              amount: recurrence.amount,
-              date,
-              description: recurrence.description || 'Transação recorrente',
-              accountId: recurrence.accountId,
-              categoryId: recurrence.categoryId,
-              creditCardId: recurrence.creditCardId,
+        for (const date of transactionDates) {
+          // Verificar se já existe transação para essa data
+          const existingTransaction = await tx.transaction.findFirst({
+            where: {
               recurrenceId: recurrence.id,
-              userId: req.userId,
-              paid: false,
-              isRecurringCharge: true,
+              date: {
+                gte: new Date(date.getFullYear(), date.getMonth(), date.getDate()),
+                lt: new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1),
+              },
             },
           });
 
-          generatedTransactions.push(transaction);
+          if (!existingTransaction) {
+            const transaction = await tx.transaction.create({
+              data: {
+                type: transactionType,
+                amount: recurrence.amount,
+                date,
+                description: recurrence.description || 'Transação recorrente',
+                accountId: recurrence.accountId,
+                categoryId: recurrence.categoryId,
+                creditCardId: recurrence.creditCardId,
+                recurrenceId: recurrence.id,
+                userId: req.userId,
+                paid: false,
+                isRecurringCharge: true,
+              },
+            });
+
+            results.push(transaction);
+          }
         }
+
+        // Atualizar nextDueDate para a próxima data após maxFutureDate
+        await tx.recurrence.update({
+          where: { id: recurrence.id },
+          data: { nextDueDate: currentDate },
+        });
       }
 
-      // Atualizar nextDueDate para a próxima data após maxFutureDate
-      await prisma.recurrence.update({
-        where: { id: recurrence.id },
-        data: { nextDueDate: currentDate },
-      });
-    }
+      return results;
+    });
 
     res.json({
       generated: generatedTransactions.length,
