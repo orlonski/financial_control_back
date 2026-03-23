@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../server';
 import { authenticateToken } from '../middleware/auth';
 import { convertDecimalToNumber } from '../utils/decimal';
+import { AccountService } from '../services/accountService';
 
 const router = Router();
 
@@ -30,6 +31,16 @@ router.get('/', authenticateToken, async (req: any, res) => {
     });
 
     res.json(convertDecimalToNumber(accounts));
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get all accounts with balances
+router.get('/balances', authenticateToken, async (req: any, res) => {
+  try {
+    const accounts = await AccountService.getAccountsWithBalances(req.userId);
+    res.json(accounts);
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }
